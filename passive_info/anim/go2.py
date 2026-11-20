@@ -409,7 +409,12 @@ def draw(stage: Go2Stage, d, smp, parts, parts_prev, smp_prev, e_ref: float,
         style.splat(L, proj(cpt), 7 * px, style.WHITE * 0.8 * f_lvl)
 
     # the spectrum ring on the floor: bits about each mode of the force
-    _spectrum_ring(L, stage, geo, d, smp, hues, px)
+    ring_ends = _spectrum_ring(L, stage, geo, d, smp, hues, px)
+
+    # screen positions for the text callouts of the loop cut
+    rk = geo.rot["calf"]
+    stage.screen = dict(contact=proj(cpt), rotor=proj(rk["c"] + ROTOR_R * rk["e2"]),
+                        spring=proj(0.5 * (rk["c"] + rk["joint"])), **ring_ends)
 
     # particles, each with a trail back toward its position on the previous frame
     if len(parts.pid):
@@ -467,3 +472,11 @@ def _spectrum_ring(L, stage, geo, d, smp, hues, px):
         p = c + np.array([r * np.cos(a), r * np.sin(a), 0])
         q = c + np.array([(r + 0.016) * np.cos(a), (r + 0.016) * np.sin(a), 0])
         style.line(L, stage.project(p)[0], stage.project(q)[0], style.WHITE * 0.5 * on, 1.6 * px)
+    r_out = RING_R0 + RING_LEN
+    end = lambda a: stage.project(c + np.array([r_out * np.cos(a), r_out * np.sin(a), 0]))[0]
+    mid = np.radians(toward)
+    a_bar = angs[int(0.8 * (K - 1))]
+    r_bar = RING_R0 + 0.55 * RING_LEN
+    bar = stage.project(c + np.array([r_bar * np.cos(a_bar), r_bar * np.sin(a_bar), 0]))[0]
+    return dict(ring_low=end(angs[0] - dth), ring_high=end(angs[-1] + dth), ring_mid=end(mid),
+                ring_bar=bar)

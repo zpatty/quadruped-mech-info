@@ -36,6 +36,7 @@ def main(argv=None) -> None:
     ap.add_argument("--gain", type=float, default=250.0, help="display motion gain")
     ap.add_argument("--workers", type=int, default=None)
     ap.add_argument("--no-webm", action="store_true")
+    ap.add_argument("--no-text", action="store_true", help="loop cut without any labels")
     ap.add_argument("--stills", type=float, nargs="*", default=None,
                     help="render PNGs at these fractions of each contact instead of a video")
     ap.add_argument("--out", type=pathlib.Path, default=compose.OUT)
@@ -45,11 +46,13 @@ def main(argv=None) -> None:
     w, h = (960, 540) if a.preview else a.size
     if a.cut == "loop":
         ks = tuple(a.ks) if a.ks else data.DEFAULT_KS
-        job = compose.build_loop(kind, ks, w, h, a.fps, a.slow or 55.0, a.gain)
+        job = compose.build_loop(kind, ks, w, h, a.fps, a.slow or 55.0, a.gain,
+                                 text=not a.no_text)
     else:
         pair = tuple(k for k in (a.ks or (1.0e4, 1.0e3)) if k is not None)
         job = compose.build_talk(kind, pair, w, h, a.fps, a.slow or 90.0, a.gain)
-    name = f"{a.style}_{a.cut}" + ("_preview" if a.preview else "")
+    name = (f"{a.style}_{a.cut}" + ("_notext" if a.cut == "loop" and a.no_text else "")
+            + ("_preview" if a.preview else ""))
 
     t0 = time.time()
     if a.stills is not None:

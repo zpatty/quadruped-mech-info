@@ -42,6 +42,7 @@ class Job:
     shots: list = field(default_factory=list)            # loop: [Shot]; talk: [(Shot, Shot)]
     tracks: list = field(default_factory=list)           # per panel: [FrameParticles]
     cards: list = field(default_factory=list)            # talk: per frame title-card alpha
+    text: bool = True                                    # loop: draw the short labels
 
 
 # ---------------------------------------------------------------------------------------
@@ -49,7 +50,7 @@ class Job:
 # ---------------------------------------------------------------------------------------
 
 def build_loop(kind: str, ks=data.DEFAULT_KS, width=1920, height=1080, fps=30.0,
-               slow=55.0, gain=250.0) -> Job:
+               slow=55.0, gain=250.0, text: bool = True) -> Job:
     sc = data.scenario(kind, ks)
     shots = []
     for i in range(len(sc.designs)):
@@ -57,7 +58,8 @@ def build_loop(kind: str, ks=data.DEFAULT_KS, width=1920, height=1080, fps=30.0,
     # run the particle update over two laps and keep the second one, so that the particle
     # state at the start of the loop matches the state at the end
     track = particle_track(sc, shots + shots, fps)[len(shots):]
-    return Job(kind, "loop", width, height, fps, slow, gain, tuple(ks), shots, [track])
+    return Job(kind, "loop", width, height, fps, slow, gain, tuple(ks), shots, [track],
+               text=text)
 
 
 def build_talk(kind: str, ks_pair=(1.0e4, 1.0e3), width=1920, height=1080, fps=30.0,
@@ -132,6 +134,9 @@ def render_frame(i: int) -> np.ndarray:
     n = len(job.shots)
     if job.cut == "loop":
         img = _panel(i, 0, job.shots[i], job.shots[(i - 1) % n])
+        if job.text:
+            from passive_info.anim.labels import loop_overlay
+            loop_overlay(img, job, _W["sc"], job.shots[i], getattr(_W["stage"], "screen", {}))
         return style.finish(img, seed=i)
     sh, prev = job.shots[i], job.shots[max(i - 1, 0)]
     halves = [_panel(i, s, sh[s], prev[s]) for s in (0, 1)]

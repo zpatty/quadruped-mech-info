@@ -51,8 +51,8 @@ linear models and energy readout as the bit counts above. The final spectrum equ
 | `flow` | the 2-DoF prototype from `systems.*`, drawn as a schematic over a flow field |
 
 Each style has two cuts:
-- `loop` has no text and repeats without a cut. It shows the rigid design, then two
-  series-elastic designs.
+- `loop` repeats without a cut. It shows the rigid design, then two series-elastic designs.
+  A few short labels explain the marks. Use `--no-text` to render it without labels.
 - `talk` shows the rigid design beside each series-elastic design under the same force, with labels.
 
 ```bash

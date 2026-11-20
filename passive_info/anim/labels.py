@@ -111,3 +111,88 @@ def talk_overlay(img, job, sc, pair, i, card_alpha):
         for k, line in enumerate(SUBTITLE):
             style.text(img, (W / 2, H / 2 + (30 + 34 * k) * px), line, 22 * px, DIM, "regular",
                        "ms", card_alpha)
+
+
+# ---------------------------------------------------------------------------------------
+# The loop cut: a small amount of text, so that a viewer can tell what the marks show
+# ---------------------------------------------------------------------------------------
+
+LEGEND = ("Glow: energy stored in each part of the leg",
+          "Dots: energy that moves between the parts",
+          "White ticks: natural frequencies of the leg")
+
+#: Where each callout's text sits relative to the point it labels, in pixels at 1080p:
+#: (dx, dy, anchor). One table per style, because the two layouts differ.
+CALLOUTS = {
+    "go2": dict(contact=(-210, 70, "rm"), rotor=(-150, 40, "rm"), spring=(-120, -80, "rm"),
+                ring=(190, -40, "lm")),
+    "proto": dict(contact=(150, 70, "lm"), rotor=(-90, 90, "rm"), spring=(-170, -10, "rm"),
+                  ring=(0, -30, "ms")),
+}
+
+
+def _callout(img, p, d, s, px, alpha, anchor):
+    """Text at `p + d`, with a thin line from the text to the point `p`."""
+    p = np.asarray(p, float)
+    t = p + np.asarray(d, float) * px
+    gap = 8 * px
+    start = t + np.array([gap if anchor[0] == "l" else -gap if anchor[0] == "r" else 0.0,
+                          -gap if anchor[1] == "s" else gap if anchor[1] == "a" else 0.0])
+    if anchor[0] == "r":
+        start[0] += 2 * gap
+    elif anchor[0] == "l":
+        start[0] -= 2 * gap
+    style.line(img, start, p, np.array(DIM) * 0.12 * alpha, 1.0 * px)
+    style.disc(img, p, 2.0 * px, np.array(DIM) * 0.25 * alpha)
+    style.text(img, t, s, 16 * px, DIM, "regular", anchor, alpha)
+
+
+def loop_overlay(img, job, sc, shot, screen: dict):
+    """Draw the loop-cut text over a composed frame, in place."""
+    H, W = img.shape[:2]
+    px = H / 1080.0
+    d = sc.designs[shot.design]
+    smp = sample(d, shot)
+    f = shot.seg_frac
+    fade = float(np.clip(min(f / 0.05, (1.0 - f) / 0.05), 0.0, 1.0))
+
+    name, sub = design_name(d, job.kind)
+    if d.ks is not None:
+        name = "Series-elastic transmission"
+    style.text(img, (56 * px, 60 * px), name, 28 * px, BRIGHT, "medium", "la", fade)
+    style.text(img, (56 * px, 100 * px), sub, 17 * px, DIM, "regular", "la", fade)
+
+    on = fade * float(shot.t >= 0)
+    style.text(img, (W - 56 * px, 56 * px), f"{smp.bits:.0f} bits", 34 * px, BRIGHT, "light",
+               "ra", on)
+    style.text(img, (W - 56 * px, 104 * px), "information about the force", 16 * px, DIM,
+               "regular", "ra", on)
+    style.text(img, (W - 56 * px, 126 * px), "in the motion of the leg so far", 16 * px, FAINT,
+               "regular", "ra", on)
+
+    for k, line in enumerate(LEGEND):
+        style.text(img, (56 * px, H - (90 - 26 * k) * px), line, 16 * px, DIM, "regular", "la")
+    style.text(img, (W - 56 * px, H - 64 * px), f"Time slowed down {job.slow:g} times", 15 * px,
+               FAINT, "regular", "ra")
+    style.text(img, (W - 56 * px, H - 38 * px), f"Motion scaled up {job.gain:g} times", 15 * px,
+               FAINT, "regular", "ra")
+
+    if not screen:
+        return
+    co = CALLOUTS["go2" if job.kind == "go2" else "proto"]
+    _callout(img, screen["contact"], co["contact"][:2], "contact force", px, 1.0, co["contact"][2])
+    _callout(img, screen["rotor"], co["rotor"][:2], "motor rotor", px, 1.0, co["rotor"][2])
+    if d.ks is not None:
+        _callout(img, screen["spring"], co["spring"][:2], "series spring", px, fade,
+                 co["spring"][2])
+    rx, ry, ra = co["ring"]
+    caption = "information about the force at each frequency"
+    if screen.get("ring_bar") is not None:
+        _callout(img, screen["ring_bar"], (rx, ry), caption, px, 1.0, ra)
+    else:
+        m = np.asarray(screen["ring_mid"], float)
+        style.text(img, (m[0] + rx * px, m[1] + ry * px), caption, 16 * px, DIM, "regular", ra)
+    for key, word, dx in (("ring_low", "low", -14), ("ring_high", "high", 14)):
+        q = np.asarray(screen[key], float)
+        style.text(img, (q[0] + dx * px, q[1]), word, 15 * px, FAINT, "regular",
+                   "rm" if dx < 0 else "lm")

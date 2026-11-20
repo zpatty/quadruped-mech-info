@@ -24,9 +24,9 @@ class FlowStage:
         self.W, self.H, self.gain = width, height, gain
         s = height / 1080.0
         self.s = s
-        self.lever = min(560 * s, 0.34 * width)
-        self.pivot = np.array([0.5 * width - 0.5 * self.lever, 0.42 * height])
-        self.floor_y = self.pivot[1] + 290 * s
+        self.lever = min(480 * s, 0.34 * width)
+        self.pivot = np.array([0.5 * width - 0.5 * self.lever, 0.50 * height])
+        self.floor_y = self.pivot[1] + 260 * s
         self.rotor_r = 92 * s
         self.hub_r = 30 * s
         # the spectrum arc goes over the whole mechanism and does not overlap the rotor
@@ -259,6 +259,15 @@ def draw(stage: FlowStage, d, smp, parts, parts_prev, smp_prev, e_ref: float, t_
         style.splat(L, g["contact"], 9 * s, style.WHITE * 0.9 * f_lvl)
 
     _halo(L, st, d, smp, hues, s)
+
+    # screen positions for the text callouts of the loop cut
+    c, r1 = st.halo_c, st.halo_r0 + st.halo_len
+    a0, a1 = np.radians(200), np.radians(340)
+    arc = lambda a: c + r1 * np.array([np.cos(a), np.sin(a)])
+    st.screen = dict(contact=g["contact"], rotor=pv + np.array([0, st.rotor_r]),
+                     spring=pv + np.array([0, 0.5 * st.rotor_r]),
+                     ring_low=arc(a0), ring_high=arc(a1), ring_mid=arc(1.5 * np.pi),
+                     ring_bar=None)
 
     # particles
     if len(parts.pid):
