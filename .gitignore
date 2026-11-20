@@ -284,3 +284,6 @@ MUJOCO_LOG.TXT
 # Slurm job stdout/stderr. Regenerated on every run and large (16 MB and growing);
 # the results they produced are tracked under passive_info/results/.
 logs/
+
+# Rendered animations: regenerable with `python -m passive_info.anim`, and large.
+passive_info/anim/out/
