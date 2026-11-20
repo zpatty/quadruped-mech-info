@@ -289,9 +289,12 @@ def info_overlay(img, job, sc, shot, screen: dict):
     if not screen:
         return
     idx = {e: i for i, e in enumerate(d.elements)}
-    pb = lambda e: smp.part_bits[idx[e]]
+    # the numbers keep their values while the display fades, so that they never count down
+    raw = smp.part_bits / smp.info_level if smp.info_level > 1e-6 else smp.part_bits * 0
+    pb = lambda e: raw[idx[e]]
+    al = smp.info_level if shot.t >= 0 else 1.0
     _callout(img, screen["contact"], (-210, 70), f"foot contact   {pb('ground'):.0f} bits", px,
-             1.0, "rm")
+             al, "rm")
     _callout(img, screen["rotor"], (-150, 40), f"knee motor rotor   {pb('rotor_calf'):.0f} bits",
-             px, 1.0, "rm")
-    _callout(img, screen["calf"], (170, 10), f"calf   {pb('calf'):.0f} bits", px, 1.0, "lm")
+             px, al, "rm")
+    _callout(img, screen["calf"], (170, 10), f"calf   {pb('calf'):.0f} bits", px, al, "lm")
