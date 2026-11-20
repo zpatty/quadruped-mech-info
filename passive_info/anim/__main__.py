@@ -30,7 +30,8 @@ def main(argv=None) -> None:
                     help="designs: 'rigid' and/or stiffnesses. Loop default: rigid 1e4 1e3; "
                          "talk compares rigid against each listed stiffness (default 1e4 1e3)")
     ap.add_argument("--preview", action="store_true", help="960x540 for a quick look")
-    ap.add_argument("--size", type=int, nargs=2, default=(1920, 1080), metavar=("W", "H"))
+    ap.add_argument("--size", type=int, nargs=2, default=(1920, 1080), metavar=("W", "H"),
+                    help="frame size (default 1920x1080; 1080x1080 for --cut loop)")
     ap.add_argument("--fps", type=float, default=30.0)
     ap.add_argument("--slow", type=float, default=None,
                     help="slow-motion factor (default 55 loop, 90 talk)")
@@ -48,6 +49,8 @@ def main(argv=None) -> None:
     if a.cut == "loop":
         if a.style != "go2":
             ap.error("the single-design loop exists for the go2 style; use --cut compare")
+        # square by default, for the round frame on the website
+        w, h = (540, 540) if a.preview else (a.size if a.size != (1920, 1080) else (1080, 1080))
         job = compose.build_info_loop(w, h, a.fps, a.slow or 80.0, a.gain)
     elif a.cut == "compare":
         ks = tuple(a.ks) if a.ks else data.DEFAULT_KS

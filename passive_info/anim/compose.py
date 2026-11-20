@@ -64,11 +64,24 @@ def build_loop(kind: str, ks=data.DEFAULT_KS, width=1920, height=1080, fps=30.0,
                text=text)
 
 
-def build_info_loop(width=1920, height=1080, fps=30.0, slow=80.0, gain=250.0) -> Job:
-    """The single-design loop: the rigid Go2 leg, with glow and dots for information."""
+#: Camera for the square information loop: close on the front-right leg.
+INFO_VIEW = dict(lookat=(0.15, -0.105, 0.105), distance=0.72, azimuth=132.0, elevation=-12.0)
+
+
+def build_info_loop(width=1080, height=1080, fps=30.0, slow=80.0, gain=250.0,
+                    start_frac: float = 0.9) -> Job:
+    """The single-design loop: the rigid Go2 leg, with glow and dots for information.
+
+    Frame 0 is the poster image that the website shows before the video plays, so the loop
+    is rotated to start at `start_frac` of the contact, when most of the information is in.
+    The rotation does not break the loop, because the frames are drawn cyclically.
+    """
     sc = data.scenario("go2", (None,), force="contact")
     shots = segment(0, fps, slow, pre=0.6)
     track = info_track(sc, shots + shots, fps)[len(shots):]
+    t0 = start_frac * T_WINDOW
+    k = min((i for i, s in enumerate(shots) if s.t >= 0), key=lambda i: abs(shots[i].t - t0))
+    shots, track = shots[k:] + shots[:k], track[k:] + track[:k]
     return Job("go2", "info", width, height, fps, slow, gain, (None,), shots, [track],
                force="contact")
 
@@ -117,8 +130,8 @@ def _init(job: Job):
     pw = job.width if job.cut in ("loop", "info") else job.width // 2
     if job.kind == "go2":
         from passive_info.anim.go2 import Go2Stage, View
-        view = View() if job.cut in ("loop", "info") else View(lookat=(0.09, -0.10, 0.07), distance=1.12,
-                                                     azimuth=128.0, elevation=-15.0)
+        view = (View(**INFO_VIEW) if job.cut == "info" else View() if job.cut == "loop" else View(lookat=(0.09, -0.10, 0.07), distance=1.12,
+                                                     azimuth=128.0, elevation=-15.0))
         _W["stage"] = Go2Stage(pw, job.height, job.gain, view)
     else:
         from passive_info.anim.flow import FlowStage

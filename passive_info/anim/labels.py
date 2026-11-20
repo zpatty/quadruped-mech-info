@@ -131,7 +131,7 @@ CALLOUTS = {
 }
 
 
-def _callout(img, p, d, s, px, alpha, anchor):
+def _callout(img, p, d, s, px, alpha, anchor, size=16, line_level=0.12, color=DIM):
     """Text at `p + d`, with a thin line from the text to the point `p`."""
     p = np.asarray(p, float)
     t = p + np.asarray(d, float) * px
@@ -142,9 +142,9 @@ def _callout(img, p, d, s, px, alpha, anchor):
         start[0] += 2 * gap
     elif anchor[0] == "l":
         start[0] -= 2 * gap
-    style.line(img, start, p, np.array(DIM) * 0.12 * alpha, 1.0 * px)
-    style.disc(img, p, 2.0 * px, np.array(DIM) * 0.25 * alpha)
-    style.text(img, t, s, 16 * px, DIM, "regular", anchor, alpha)
+    style.line(img, start, p, np.array(DIM) * line_level * alpha, max(1.0, size / 16) * px)
+    style.disc(img, p, 2.0 * max(1.0, size / 16) * px, np.array(DIM) * 0.25 * alpha)
+    style.text(img, t, s, size * px, color, "regular", anchor, alpha)
 
 
 def loop_overlay(img, job, sc, shot, screen: dict):
@@ -199,92 +199,71 @@ def loop_overlay(img, job, sc, shot, screen: dict):
 
 
 # ---------------------------------------------------------------------------------------
-# The single-design loop: what the glow means, how many bits, and the force plot
+# The single-design loop, square, for a round frame on the website
+#
+# The website shows this video in a round shape about 300 px across, so the frame is scaled
+# down to about 0.28 and its corners are cut off. Everything here therefore sits inside a
+# circle of radius 0.35 of the frame, and every label is large.
 # ---------------------------------------------------------------------------------------
 
+#: Caption text for the website, which is not drawn in the frame.
 INFO_TITLE = "Information about a contact force in the motion of a robot leg"
 INFO_LEGEND = ("Glow: information about the force in the motion of each part",
                "Dots: new information, moving from the contact into the leg")
 
+#: Layout in pixels for a 1080 x 1080 frame, relative to the frame centre. Scaled with size.
+INFO_LAYOUT = dict(
+    safe_r=378,             # the circle that everything must stay inside
+    ring_r=352, ring_w=10,  # the fill ring
+    count=(40, 0),          # left end of the large counter's baseline
+    count_size=120, unit_size=46, caption_size=36,
+    part_size=34,
+)
 
-def _force_plot(img, x0, y0, w, h, d, smp, px, alpha):
-    """The applied force so far, and the band of forces consistent with the motion so far."""
+
+def _fill_ring(img, c, r, w, frac, px, alpha):
+    """A faint full circle, and a bright arc that fills it clockwise from the top."""
     C = style.INFO
-    n_w = d.n_contact
-    f = d.force[:n_w]
-    lo, hi = -100.0, 220.0
-    X = lambda i: x0 + w * i / (n_w - 1)
-    Y = lambda v: y0 + h * (hi - np.clip(v, lo, hi)) / (hi - lo)
-    ink = np.array(FAINT) * 0.5 * alpha
-
-    style.line(img, (x0, Y(0)), (x0 + w, Y(0)), ink, 1.0 * px)
-    for v in (0, 100, 200):
-        style.text(img, (x0 - 10 * px, Y(v)), f"{v}", 13 * px, FAINT, "regular", "rm", alpha)
-    style.text(img, (x0 - 10 * px, y0 - 16 * px), "N", 13 * px, FAINT, "regular", "rm", alpha)
-    for ms in (0, 20, 40, 60, 80):
-        x = x0 + w * ms / 85.0
-        style.line(img, (x, y0 + h), (x, y0 + h + 5 * px), ink, 1.0 * px)
-        style.text(img, (x, y0 + h + 9 * px), f"{ms}", 13 * px, FAINT, "regular", "ma", alpha)
-    style.text(img, (x0 + w, y0 + h + 26 * px), "time into the contact, ms", 13 * px, FAINT,
-               "regular", "ra", alpha)
-
-    # the band, over the whole window: wide ahead of the current time, narrow behind it
-    i = np.arange(n_w)
-    top = smp.post_mean + 2 * smp.post_sd
-    bot = smp.post_mean - 2 * smp.post_sd
-    poly = ([(X(k), Y(top[k])) for k in i] + [(X(k), Y(bot[k])) for k in i[::-1]])
-    style.fill_poly(img, poly, C * 0.22 * alpha * smp.info_level)
-    style.polyline(img, [(X(k), Y(top[k])) for k in i], C * 0.5 * alpha * smp.info_level, 1.0 * px)
-    style.polyline(img, [(X(k), Y(bot[k])) for k in i], C * 0.5 * alpha * smp.info_level, 1.0 * px)
-
-    # the applied force, up to now
-    now = int(round(smp.t_ms / 85.0 * (n_w - 1)))
-    if now >= 1 and smp.info_level > 0:
-        style.polyline(img, [(X(k), Y(f[k])) for k in range(now + 1)],
-                       np.array(BRIGHT) * 0.9 * alpha * smp.info_level, 1.8 * px)
-    xc = X(now)
-    style.line(img, (xc, y0 - 4 * px), (xc, y0 + h), np.array(BRIGHT) * 0.25 * alpha, 1.0 * px)
-
-    # key
-    ky = y0 - 30 * px
-    style.line(img, (x0 + 10 * px, ky), (x0 + 34 * px, ky), np.array(BRIGHT) * 0.9 * alpha, 1.8 * px)
-    style.text(img, (x0 + 42 * px, ky), "force applied at the foot", 14 * px, DIM, "regular", "lm",
-               alpha)
-    ky2 = ky - 24 * px
-    style.fill_poly(img, [(x0 + 10 * px, ky2 - 5 * px), (x0 + 34 * px, ky2 - 5 * px),
-                          (x0 + 34 * px, ky2 + 5 * px), (x0 + 10 * px, ky2 + 5 * px)],
-                    C * 0.35 * alpha)
-    style.text(img, (x0 + 42 * px, ky2), "forces consistent with the motion of the leg so far",
-               14 * px, DIM, "regular", "lm", alpha)
+    th = np.linspace(0.0, 2 * np.pi, 361)
+    ring = np.stack([c[0] + r * np.sin(th), c[1] - r * np.cos(th)], 1)
+    style.polyline(img, ring, C * 0.10 * alpha, w * px, closed=True)
+    frac = float(np.clip(frac, 0.0, 1.0))
+    if frac > 1e-3:
+        n = max(2, int(361 * frac))
+        arc = ring[:n]
+        style.polyline(img, arc, C * 0.9 * alpha, w * px)
+        style.splat(img, arc[-1], 1.4 * w * px, C * 1.2 * alpha)
 
 
 def info_overlay(img, job, sc, shot, screen: dict):
-    """Draw the text and the force plot of the single-design loop, in place."""
+    """Draw the counter, the fill ring and the part labels of the square loop, in place."""
     H, W = img.shape[:2]
-    px = H / 1080.0
+    S = min(W, H)
+    px = S / 1080.0
+    c = np.array([W / 2.0, H / 2.0])
+    lay = INFO_LAYOUT
     d = sc.designs[shot.design]
     smp = sample(d, shot)
+    total = float(d.bits_t[d.n_contact - 1])
 
-    style.text(img, (56 * px, 60 * px), INFO_TITLE, 26 * px, BRIGHT, "medium", "la")
-    style.text(img, (56 * px, 98 * px),
-               "Go2 front-right leg with its motors off, rigid transmission", 16 * px, DIM,
-               "regular", "la")
+    # the information is shown at full strength during the contact and fades with the loop
+    al = smp.info_level if shot.t >= 0 else 0.0
+    raw_bits = smp.bits
+    _fill_ring(img, c, lay["ring_r"] * px, lay["ring_w"], raw_bits / total, px, max(al, 0.35))
 
-    on = smp.info_level * float(shot.t >= 0)
-    style.text(img, (W - 56 * px, 56 * px), f"{smp.bits:.0f} bits", 34 * px, BRIGHT, "light",
-               "ra", on)
-    style.text(img, (W - 56 * px, 104 * px), "information about the force", 16 * px, DIM,
-               "regular", "ra", on)
-    style.text(img, (W - 56 * px, 126 * px), "in the motion of the whole leg so far", 16 * px,
-               FAINT, "regular", "ra", on)
-
-    for k, line in enumerate(INFO_LEGEND):
-        style.text(img, (56 * px, H - (64 - 26 * k) * px), line, 16 * px, DIM, "regular", "la")
-    style.text(img, (W / 2, H - 22 * px),
-                f"Motion scaled up {job.gain:g} times   ·   time slowed down {job.slow:g} times",
-                14 * px, FAINT, "regular", "ms")
-
-    _force_plot(img, W - 640 * px, H - 250 * px, 580 * px, 170 * px, d, smp, px, 1.0)
+    cx, cy = c + np.array(lay["count"]) * px
+    a_txt = max(al, 0.35)
+    style.text(img, (cx, cy), f"{raw_bits:.0f}", lay["count_size"] * px, BRIGHT, "light", "ls",
+               a_txt)
+    from passive_info.anim.style import font
+    wnum = font("light", int(lay["count_size"] * px)).getlength(f"{raw_bits:.0f}")
+    style.text(img, (cx + wnum + 12 * px, cy), "bits", lay["unit_size"] * px, BRIGHT, "light",
+               "ls", a_txt)
+    cap = lay["caption_size"] * px
+    style.text(img, (cx + 4 * px, cy + 1.45 * cap), "of information", cap, DIM, "regular",
+               "ls", a_txt)
+    style.text(img, (cx + 4 * px, cy + 2.65 * cap), "about the force", cap, DIM, "regular",
+               "ls", a_txt)
 
     if not screen:
         return
@@ -292,9 +271,8 @@ def info_overlay(img, job, sc, shot, screen: dict):
     # the numbers keep their values while the display fades, so that they never count down
     raw = smp.part_bits / smp.info_level if smp.info_level > 1e-6 else smp.part_bits * 0
     pb = lambda e: raw[idx[e]]
-    al = smp.info_level if shot.t >= 0 else 1.0
-    _callout(img, screen["contact"], (-210, 70), f"foot contact   {pb('ground'):.0f} bits", px,
-             al, "rm")
-    _callout(img, screen["rotor"], (-150, 40), f"knee motor rotor   {pb('rotor_calf'):.0f} bits",
-             px, al, "rm")
-    _callout(img, screen["calf"], (170, 10), f"calf   {pb('calf'):.0f} bits", px, al, "lm")
+    ps = lay["part_size"]
+    _callout(img, screen["contact"], (-140, 20), f"foot  {pb('ground'):.0f} bits", px, al,
+             "rm", size=ps, line_level=0.2)
+    _callout(img, screen["rotor"], (-20, 150), f"motor  {pb('rotor_calf'):.0f} bits", px, al,
+             "lm", size=ps, line_level=0.2)

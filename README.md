@@ -39,17 +39,32 @@ uv run slip-controlled <k_s | prop> [steps] [band_hz] [batch]
 
 ## Animations
 
-`passive_info.anim` renders videos of the result. The main one, `go2 --cut loop`, shows the
-rigid Go2 leg with its motors off while a contact force is applied to the foot:
+`passive_info.anim` renders videos of the result. The main one, `go2 --cut loop`, is a square
+1080×1080 loop for the website. It shows the rigid Go2 leg with its motors off while a
+contact force is applied to the foot:
 - **Glow:** each part glows with the bits of information about the force in the motion of
   that part.
 - **Dots:** new information, moving from the contact into the leg.
-- **Force plot:** the applied force, and the band of force profiles that are consistent with
-  the motion of the leg so far. The band narrows from left to right as the bits accumulate.
+- **Counter and ring:** the total bits in the motion of the whole leg. The ring fills as the
+  total rises to 134.5 bits at the end of the contact.
+- **Part labels:** the bits for the foot contact and the knee motor rotor.
 
 Every value on screen comes from the same linear model and energy readout as the bit counts
-above. The total at the end of the contact equals `information.profile_bits`. Nothing in the
-video estimates the force: the band is the posterior range from that same Gaussian model.
+above. The total at the end of the contact equals `information.profile_bits`.
+
+Specs for the website:
+- **Shape.** The website shows the video in a round frame of about 300 px, so all the action
+  and text stay inside the middle 70% of the frame.
+- **Loop.** 9.8 s at 30 fps, seamless, no audio.
+- **Poster.** Frame 0 is the poster image. The loop starts near the end of the contact,
+  so frame 0 shows the leg with most of the information in.
+- **Encodes.** For a 720×720 encode, scale the 1080 source (see below).
+
+Text for the website caption, which is not in the frame:
+
+> Information about a contact force in the motion of a robot leg. Glow: information about the
+> force in the motion of each part. Dots: new information, moving from the contact into the
+> leg. Motion scaled up 250 times; time slowed down 80 times.
 
 Other cuts compare designs:
 - `--cut compare` shows the rigid design, then two series-elastic designs, with energy glow
@@ -60,24 +75,23 @@ Other cuts compare designs:
 ```bash
 sudo apt-get install -y libegl1 libgl1-mesa-dri ffmpeg   # headless GL; or libosmesa6 + MUJOCO_GL=osmesa
 uv sync --extra anim
-uv run python -m passive_info.anim go2 --cut loop          # add --preview for 960x540
+uv run python -m passive_info.anim go2 --cut loop          # 1080x1080; add --preview for 540x540
 uv run python -m passive_info.anim go2 --cut compare
 uv run python -m passive_info.anim go2 --cut talk
-uv run python -m passive_info.anim go2 --stills 0.5        # PNGs instead of video
+ffmpeg -i passive_info/anim/out/go2_loop.mp4 -vf scale=720:720:flags=lanczos -an go2_loop_720.mp4
 ```
 
-The videos go to `passive_info/anim/out/` as MP4 and WebM. Two quantities are scaled for
-display, and every video states both:
-- Joint motion is multiplied by `--gain`, default 250. The real deflections are less than a
-  milliradian.
-- Time is slowed down by `--slow`, default 80 for the loop.
+The videos go to `passive_info/anim/out/` as MP4 and WebM.
 
-The loop uses a force with the shape of a contact: a half-sine times a small ripple. The bit
-counts and the width of the band do not depend on this choice. The motion of the leg and the
-centre of the band do.
+**Scaling.** Joint motion is multiplied by `--gain`, default 250, because the real
+deflections are less than a milliradian. Time is slowed down by `--slow`, default 80 for the
+loop.
 
-Between contacts, the display moves the leg back to its rest pose. The model does not do this
-by itself, because the clamped leg has directions with zero stiffness.
+**Force shape.** The loop uses a force with the shape of a contact: a half-sine times a small
+ripple. The bit counts do not depend on this choice. The motion of the leg does.
+
+**Rest pose.** Between contacts, the display moves the leg back to its rest pose. The model
+does not do this by itself, because the clamped leg has directions with zero stiffness.
 
 ## Regression tables
 
