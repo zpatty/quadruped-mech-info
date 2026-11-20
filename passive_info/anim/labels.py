@@ -211,32 +211,20 @@ INFO_TITLE = "Information about a contact force in the motion of a robot leg"
 INFO_LEGEND = ("Glow: information about the force in the motion of each part",
                "Dots: new information, moving from the contact into the leg")
 
+#: The lines under the counter. The last one is brighter: the information is in the mechanism.
+INFO_CAPTION = ("of information", "about the force", "in the mechanism")
+
 #: Layout in pixels for a 1080 x 1080 frame, relative to the frame centre. Scaled with size.
 INFO_LAYOUT = dict(
     safe_r=378,             # the circle that everything must stay inside
-    ring_r=352, ring_w=10,  # the fill ring
-    count=(40, 0),          # left end of the large counter's baseline
+    count=(40, -40),        # left end of the large counter's baseline
     count_size=120, unit_size=46, caption_size=36,
     part_size=34,
 )
 
 
-def _fill_ring(img, c, r, w, frac, px, alpha):
-    """A faint full circle, and a bright arc that fills it clockwise from the top."""
-    C = style.INFO
-    th = np.linspace(0.0, 2 * np.pi, 361)
-    ring = np.stack([c[0] + r * np.sin(th), c[1] - r * np.cos(th)], 1)
-    style.polyline(img, ring, C * 0.10 * alpha, w * px, closed=True)
-    frac = float(np.clip(frac, 0.0, 1.0))
-    if frac > 1e-3:
-        n = max(2, int(361 * frac))
-        arc = ring[:n]
-        style.polyline(img, arc, C * 0.9 * alpha, w * px)
-        style.splat(img, arc[-1], 1.4 * w * px, C * 1.2 * alpha)
-
-
 def info_overlay(img, job, sc, shot, screen: dict):
-    """Draw the counter, the fill ring and the part labels of the square loop, in place."""
+    """Draw the counter and the part labels of the square loop, in place."""
     H, W = img.shape[:2]
     S = min(W, H)
     px = S / 1080.0
@@ -244,12 +232,10 @@ def info_overlay(img, job, sc, shot, screen: dict):
     lay = INFO_LAYOUT
     d = sc.designs[shot.design]
     smp = sample(d, shot)
-    total = float(d.bits_t[d.n_contact - 1])
 
     # the information is shown at full strength during the contact and fades with the loop
     al = smp.info_level if shot.t >= 0 else 0.0
     raw_bits = smp.bits
-    _fill_ring(img, c, lay["ring_r"] * px, lay["ring_w"], raw_bits / total, px, max(al, 0.35))
 
     cx, cy = c + np.array(lay["count"]) * px
     a_txt = max(al, 0.35)
@@ -260,10 +246,9 @@ def info_overlay(img, job, sc, shot, screen: dict):
     style.text(img, (cx + wnum + 12 * px, cy), "bits", lay["unit_size"] * px, BRIGHT, "light",
                "ls", a_txt)
     cap = lay["caption_size"] * px
-    style.text(img, (cx + 4 * px, cy + 1.45 * cap), "of information", cap, DIM, "regular",
-               "ls", a_txt)
-    style.text(img, (cx + 4 * px, cy + 2.65 * cap), "about the force", cap, DIM, "regular",
-               "ls", a_txt)
+    for k, line in enumerate(INFO_CAPTION):
+        style.text(img, (cx + 4 * px, cy + (1.45 + 1.2 * k) * cap), line, cap,
+                   BRIGHT if k == len(INFO_CAPTION) - 1 else DIM, "regular", "ls", a_txt)
 
     if not screen:
         return

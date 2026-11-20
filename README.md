@@ -45,8 +45,8 @@ contact force is applied to the foot:
 - **Glow:** each part glows with the bits of information about the force in the motion of
   that part.
 - **Dots:** new information, moving from the contact into the leg.
-- **Counter and ring:** the total bits in the motion of the whole leg. The ring fills as the
-  total rises to 134.5 bits at the end of the contact.
+- **Counter:** "N bits of information about the force in the mechanism". It shows the total
+  for the whole leg, which rises to 134.5 bits at the end of the contact.
 - **Part labels:** the bits for the foot contact and the knee motor rotor.
 
 Every value on screen comes from the same linear model and energy readout as the bit counts
