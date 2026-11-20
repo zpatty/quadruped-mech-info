@@ -76,6 +76,9 @@ class Design:
     joint_q: np.ndarray             #: (n_t, n_joints) rad, link coordinates
     rotor_q: np.ndarray             #: (n_t, n_joints) rad, the rotors (= joints when rigid)
     total_energy: np.ndarray        #: (n_t,) 1/2 x^T E x, for checking the partition
+    part_bits: np.ndarray           #: (n_t, n_elem) bits about the force in each element alone
+    post_mean: np.ndarray           #: (n_t, n_w) centre of the band of consistent forces, N
+    post_sd: np.ndarray             #: (n_t, n_w) its standard deviation, N
     extras: dict = field(default_factory=dict)
 
     @property
@@ -107,6 +110,27 @@ def force_amplitudes(band_hz: float = BAND_HZ, seed: int = SEED) -> np.ndarray:
     return np.random.default_rng(seed).normal(0.0, SIGMA_A, n_modes(T_WINDOW, band_hz))
 
 
+#: Peak of the smooth part of the contact-shaped force, N, and the relative size of the
+#: ripple that multiplies it.
+CONTACT_PEAK, CONTACT_RIPPLE = 150.0, 0.15
+
+
+def contact_amplitudes(band_hz: float = BAND_HZ, seed: int = SEED) -> np.ndarray:
+    """Mode amplitudes of a force that looks like a contact: a half-sine times some ripple.
+
+    Only the motion and the centre of the band of consistent forces depend on this choice.
+    The bit counts and the width of the band depend only on the mechanism and the prior.
+    """
+    n_w = int(round(T_WINDOW * FS)) + 1
+    K = n_modes(T_WINDOW, band_hz)
+    Phi = mode_basis(n_w, K)
+    bump = CONTACT_PEAK * np.sin(np.pi * (np.arange(n_w) + 0.5) / n_w)
+    ripple = Phi @ force_amplitudes(band_hz, seed)
+    ripple /= ripple.std()
+    # the ripple scales the half-sine, so the force stays positive, as a contact force must
+    return Phi.T @ (bump * (1.0 + CONTACT_RIPPLE * ripple))
+
+
 # ---------------------------------------------------------------------------------------
 # Simulation and the information spectrum
 # ---------------------------------------------------------------------------------------
@@ -131,21 +155,57 @@ def _mode_responses(sys, band_hz: float, t_tail: float) -> tuple[np.ndarray, int
     return X, n_w
 
 
-def _bits_over_time(sys, Xj: np.ndarray, n_w: int, sigma: float | None = None):
-    """Cumulative bits and their per-mode spectrum, `(n_t,)` and `(n_t, K)`."""
+def _gamma(sys, sigma: float | None = None) -> float:
     sigma = natural_sigma(sys.readout) if sigma is None else sigma
-    gamma = (SIGMA_A / sigma) ** 2
+    return (SIGMA_A / sigma) ** 2
+
+
+def _bits_over_time(sys, Xj: np.ndarray, n_w: int, amps: np.ndarray,
+                    sigma: float | None = None):
+    """Cumulative bits, their per-mode spectrum, and the band of consistent forces.
+
+    The band comes from the same linear Gaussian model as the bits. With prior
+    `a ~ N(0, SIGMA_A^2 I)` and gram `G(t)`, the force profiles consistent with the state up
+    to `t` have covariance `SIGMA_A^2 (I + G)^-1` in mode space. For a noise-free state the
+    centre is `(I + G)^-1 G a`. Both are mapped to force samples with the mode basis.
+    """
+    gamma = _gamma(sys, sigma)
     Y = np.einsum("oi,tki->tko", sys.C, Xj)                 # readout per mode
     G = gamma * np.cumsum(np.einsum("tko,tjo->tkj", Y[:n_w], Y[:n_w]), axis=0)
     n_t, K = Xj.shape[0], Xj.shape[1]
+    Phi = mode_basis(n_w, K)
     bits = np.zeros(n_t)
     spec = np.zeros((n_t, K))
+    mean = np.zeros((n_t, n_w))
+    sd = np.zeros((n_t, n_w))
     for i in range(n_t):
         lam, V = np.linalg.eigh(G[min(i, n_w - 1)])
-        b = 0.5 * np.log2(1.0 + np.clip(lam, 0.0, None))
+        lam = np.clip(lam, 0.0, None)
+        b = 0.5 * np.log2(1.0 + lam)
         bits[i] = b.sum()
         spec[i] = (V ** 2) @ b
-    return bits, spec
+        PV = Phi @ V
+        mean[i] = PV @ ((lam / (1.0 + lam)) * (V.T @ amps))
+        sd[i] = SIGMA_A * np.sqrt((PV ** 2) @ (1.0 / (1.0 + lam)))
+    return bits, spec, mean, sd
+
+
+def _part_bits(Xj: np.ndarray, n_w: int, Qs: np.ndarray, gamma: float) -> np.ndarray:
+    """Bits about the force in each element on its own, `(n_t, n_elem)`.
+
+    Element `e` is read out through its own energy form `Q_e`. The forms sum to `E`, so all
+    elements read together give exactly the total bits.
+    """
+    n_t, K = Xj.shape[0], Xj.shape[1]
+    out = np.zeros((n_t, len(Qs)))
+    for e, Qe in enumerate(Qs):
+        if not np.any(Qe):
+            continue
+        G = gamma * np.cumsum(np.einsum("tki,ij,tlj->tkl", Xj[:n_w], Qe, Xj[:n_w]), axis=0)
+        for i in range(n_t):
+            lam = np.clip(np.linalg.eigvalsh(G[min(i, n_w - 1)]), 0.0, None)
+            out[i, e] = 0.5 * np.log2(1.0 + lam).sum()
+    return out
 
 
 def _build(sys, Q: dict[str, np.ndarray], elements, edges, amps, band_hz, t_tail,
@@ -166,7 +226,8 @@ def _build(sys, Q: dict[str, np.ndarray], elements, edges, amps, band_hz, t_tail
     E = energy_metric(sys.K, sys.H)
     total = 0.5 * np.einsum("ti,ij,tj->t", X, E, X)
 
-    bits, spec = _bits_over_time(sys, Xj, n_w)
+    bits, spec, post_mean, post_sd = _bits_over_time(sys, Xj, n_w, amps)
+    part_bits = _part_bits(Xj, n_w, Qs, _gamma(sys))
     n = sys.n
     return Design(
         ks=ks, label=label, t=np.arange(n_t) / FS, force=force, X=X, n=n,
@@ -174,7 +235,7 @@ def _build(sys, Q: dict[str, np.ndarray], elements, edges, amps, band_hz, t_tail
         bits_t=bits, spec_t=spec, mode_freqs=np.arange(K) / (2.0 * T_WINDOW),
         natural_hz=sys.nonzero_modes_hz(),
         joint_q=X[:, joint_idx], rotor_q=X[:, rotor_idx], total_energy=total,
-        extras=extras or {})
+        part_bits=part_bits, post_mean=post_mean, post_sd=post_sd, extras=extras or {})
 
 
 def _block(ns: int, n: int, which: str, M: np.ndarray) -> np.ndarray:
@@ -282,9 +343,13 @@ def proto_design(ks: float | None, amps: np.ndarray, band_hz: float = BAND_HZ,
 
 
 def scenario(kind: str = "go2", ks_list=DEFAULT_KS, band_hz: float = BAND_HZ,
-             seed: int = SEED, t_tail: float = T_TAIL) -> Scenario:
-    """Every design under one shared force. `kind` is 'go2' or 'proto'."""
-    amps = force_amplitudes(band_hz, seed)
+             seed: int = SEED, t_tail: float = T_TAIL, force: str = "prior") -> Scenario:
+    """Every design under one shared force. `kind` is 'go2' or 'proto'.
+
+    `force` is 'prior' for a draw from the prior of the paper, or 'contact' for a force that
+    looks like a contact (`contact_amplitudes`).
+    """
+    amps = (contact_amplitudes if force == "contact" else force_amplitudes)(band_hz, seed)
     build = go2_design if kind == "go2" else proto_design
     return Scenario(amps=amps, band_hz=band_hz,
                     designs=[build(ks, amps, band_hz, t_tail) for ks in ks_list])

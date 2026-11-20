@@ -19,6 +19,8 @@ BG = np.array([0.006, 0.007, 0.011])
 INK = np.array([0.55, 0.62, 0.75])           # faint structural lines
 ASH = np.array([0.22, 0.20, 0.19])           # colour of dissipated energy
 WHITE = np.array([1.0, 0.97, 0.92])
+#: The one colour for information in the single-design loop, linear RGB.
+INFO = np.array([0.30, 0.78, 1.0])
 
 #: Force-mode ramp, low frequency -> high: amber, coral, violet, sky, aqua. sRGB hex.
 _RAMP_HEX = ("#ffb347", "#ff6b6b", "#c56cf0", "#45aaf2", "#4cf2c4")

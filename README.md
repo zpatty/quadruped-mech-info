@@ -39,38 +39,44 @@ uv run slip-controlled <k_s | prop> [steps] [band_hz] [batch]
 
 ## Animations
 
-`passive_info.anim` renders videos of the result. A contact force is applied to a leg, and the
-video shows the energy in each part of the leg and the information about the force in the
-motion of the leg, for each frequency of the force. Every value on screen comes from the same
-linear models and energy readout as the bit counts above. The final spectrum equals
-`information.profile_bits`.
+`passive_info.anim` renders videos of the result. The main one, `go2 --cut loop`, shows the
+rigid Go2 leg with its motors off while a contact force is applied to the foot:
+- **Glow:** each part glows with the bits of information about the force in the motion of
+  that part.
+- **Dots:** new information, moving from the contact into the leg.
+- **Force plot:** the applied force, and the band of force profiles that are consistent with
+  the motion of the leg so far. The band narrows from left to right as the bits accumulate.
 
-| Style | Content |
-|---|---|
-| `go2` | the Go2 from MuJoCo Menagerie, restyled, with the front-right leg driven by `embodied.go2_*` |
-| `flow` | the 2-DoF prototype from `systems.*`, drawn as a schematic over a flow field |
+Every value on screen comes from the same linear model and energy readout as the bit counts
+above. The total at the end of the contact equals `information.profile_bits`. Nothing in the
+video estimates the force: the band is the posterior range from that same Gaussian model.
 
-Each style has two cuts:
-- `loop` repeats without a cut. It shows the rigid design, then two series-elastic designs.
-  A few short labels explain the marks. Use `--no-text` to render it without labels.
-- `talk` shows the rigid design beside each series-elastic design under the same force, with labels.
+Other cuts compare designs:
+- `--cut compare` shows the rigid design, then two series-elastic designs, with energy glow
+  and a spectrum ring.
+- `--cut talk` shows the rigid design beside each series-elastic design.
+- The `flow` style draws the 2-DoF prototype from `systems.*` as a schematic.
 
 ```bash
 sudo apt-get install -y libegl1 libgl1-mesa-dri ffmpeg   # headless GL; or libosmesa6 + MUJOCO_GL=osmesa
 uv sync --extra anim
 uv run python -m passive_info.anim go2 --cut loop          # add --preview for 960x540
+uv run python -m passive_info.anim go2 --cut compare
 uv run python -m passive_info.anim go2 --cut talk
-uv run python -m passive_info.anim flow --cut loop
-uv run python -m passive_info.anim go2 --stills 0.55       # PNGs instead of video
+uv run python -m passive_info.anim go2 --stills 0.5        # PNGs instead of video
 ```
 
 The videos go to `passive_info/anim/out/` as MP4 and WebM. Two quantities are scaled for
-display, and the talk cut states both:
+display, and every video states both:
 - Joint motion is multiplied by `--gain`, default 250. The real deflections are less than a
   milliradian.
-- Time is slowed down by `--slow`, default 55 for the loop and 90 for the talk cut.
+- Time is slowed down by `--slow`, default 80 for the loop.
 
-Between designs, the display moves the leg back to its rest pose. The model does not do this
+The loop uses a force with the shape of a contact: a half-sine times a small ripple. The bit
+counts and the width of the band do not depend on this choice. The motion of the leg and the
+centre of the band do.
+
+Between contacts, the display moves the leg back to its rest pose. The model does not do this
 by itself, because the clamped leg has directions with zero stiffness.
 
 ## Regression tables

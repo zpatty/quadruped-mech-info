@@ -72,3 +72,32 @@ def test_contact_rings_down_in_the_tail(go2):
     for d in go2.designs:
         peak = d.total_energy[:d.n_contact].max()
         assert d.total_energy[-1] < 0.2 * peak
+
+
+def test_parts_together_give_the_total_bits():
+    # The element forms sum to E, so stacking every element's readout is the energy readout.
+    from passive_info.embodied import go2_proprioceptive
+    from passive_info.information import FS, T_WINDOW
+    d = data.go2_design(None, data.contact_amplitudes())
+    sys = go2_proprioceptive()
+    Xj, n_w = data._mode_responses(sys, data.BAND_HZ, 0.0)
+    gamma = data._gamma(sys)
+    from mechinfo.mechanics import energy_metric
+    G = gamma * np.einsum("tki,ij,tlj->kl", Xj[:n_w], energy_metric(sys.K, sys.H), Xj[:n_w])
+    total = 0.5 * np.linalg.slogdet(np.eye(len(G)) + G)[1] / np.log(2)
+    assert d.bits_t[d.n_contact - 1] == pytest.approx(total, rel=1e-9)
+    assert np.all(d.part_bits[d.n_contact - 1] <= total + 1e-9)
+    assert np.all(np.diff(d.part_bits, axis=0) >= -1e-9)
+
+
+def test_band_of_consistent_forces_starts_at_the_prior_and_narrows():
+    from passive_info.information import mode_basis
+    d = data.go2_design(None, data.contact_amplitudes())
+    K = len(d.mode_freqs)
+    Phi = mode_basis(d.post_sd.shape[1], K)
+    prior_sd = data.SIGMA_A * np.sqrt((Phi ** 2).sum(1))
+    np.testing.assert_allclose(d.post_sd[0], prior_sd, rtol=1e-9)
+    assert np.all(d.post_sd[d.n_contact - 1] < 0.2 * prior_sd)
+    # with this much information the centre of the band is close to the applied force
+    err = np.abs(d.post_mean[d.n_contact - 1] - d.force[:d.n_contact])
+    assert err.max() < 0.1 * np.abs(d.force).max()

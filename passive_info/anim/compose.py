@@ -22,7 +22,8 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from passive_info.anim import data, style
-from passive_info.anim.timeline import (Shot, energy_ref, particle_track, sample, segment)
+from passive_info.anim.timeline import (Shot, energy_ref, info_track, particle_track, sample,
+                                        segment)
 from passive_info.information import T_WINDOW
 
 OUT = pathlib.Path(__file__).resolve().parent / "out"
@@ -43,6 +44,7 @@ class Job:
     tracks: list = field(default_factory=list)           # per panel: [FrameParticles]
     cards: list = field(default_factory=list)            # talk: per frame title-card alpha
     text: bool = True                                    # loop: draw the short labels
+    force: str = "prior"                                 # data.scenario(force=...)
 
 
 # ---------------------------------------------------------------------------------------
@@ -60,6 +62,15 @@ def build_loop(kind: str, ks=data.DEFAULT_KS, width=1920, height=1080, fps=30.0,
     track = particle_track(sc, shots + shots, fps)[len(shots):]
     return Job(kind, "loop", width, height, fps, slow, gain, tuple(ks), shots, [track],
                text=text)
+
+
+def build_info_loop(width=1920, height=1080, fps=30.0, slow=80.0, gain=250.0) -> Job:
+    """The single-design loop: the rigid Go2 leg, with glow and dots for information."""
+    sc = data.scenario("go2", (None,), force="contact")
+    shots = segment(0, fps, slow, pre=0.6)
+    track = info_track(sc, shots + shots, fps)[len(shots):]
+    return Job("go2", "info", width, height, fps, slow, gain, (None,), shots, [track],
+               force="contact")
 
 
 def build_talk(kind: str, ks_pair=(1.0e4, 1.0e3), width=1920, height=1080, fps=30.0,
@@ -96,16 +107,17 @@ _W: dict = {}
 def _init(job: Job):
     from passive_info.anim.particles import graph_distances
     _W["job"] = job
-    sc = data.scenario(job.kind, job.ks)
+    sc = data.scenario(job.kind, job.ks, force=job.force)
     _W["sc"] = sc
     _W["e_ref"] = energy_ref(sc)
+    _W["b_ref"] = float(max(d.part_bits.max() for d in sc.designs))
     d0 = sc.designs[0]
     idx = {e: i for i, e in enumerate(d0.elements)}
     _W["nxt"] = graph_distances(len(d0.elements), [(idx[a], idx[b]) for a, b in d0.edges])[1]
-    pw = job.width if job.cut == "loop" else job.width // 2
+    pw = job.width if job.cut in ("loop", "info") else job.width // 2
     if job.kind == "go2":
         from passive_info.anim.go2 import Go2Stage, View
-        view = View() if job.cut == "loop" else View(lookat=(0.09, -0.10, 0.07), distance=1.12,
+        view = View() if job.cut in ("loop", "info") else View(lookat=(0.09, -0.10, 0.07), distance=1.12,
                                                      azimuth=128.0, elevation=-15.0)
         _W["stage"] = Go2Stage(pw, job.height, job.gain, view)
     else:
@@ -120,6 +132,10 @@ def _panel(i: int, side: int, shot: Shot, prev: Shot) -> np.ndarray:
     track = job.tracks[side]
     parts, parts_prev = track[i], track[i - 1]
     t_anim = i / job.fps
+    if job.cut == "info":
+        from passive_info.anim.go2 import draw_info
+        return draw_info(_W["stage"], d, smp, parts, parts_prev, smp_prev, _W["b_ref"], t_anim,
+                         _W["nxt"])
     if job.kind == "go2":
         from passive_info.anim.go2 import draw
         return draw(_W["stage"], d, smp, parts, parts_prev, smp_prev, _W["e_ref"], t_anim,
@@ -132,6 +148,11 @@ def _panel(i: int, side: int, shot: Shot, prev: Shot) -> np.ndarray:
 def render_frame(i: int) -> np.ndarray:
     job = _W["job"]
     n = len(job.shots)
+    if job.cut == "info":
+        img = _panel(i, 0, job.shots[i], job.shots[(i - 1) % n])
+        from passive_info.anim.labels import info_overlay
+        info_overlay(img, job, _W["sc"], job.shots[i], getattr(_W["stage"], "screen", {}))
+        return style.finish(img, seed=i)
     if job.cut == "loop":
         img = _panel(i, 0, job.shots[i], job.shots[(i - 1) % n])
         if job.text:

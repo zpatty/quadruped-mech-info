@@ -1,6 +1,7 @@
 """Render the animations.
 
-    uv run python -m passive_info.anim go2 --cut loop
+    uv run python -m passive_info.anim go2 --cut loop        # rigid Go2, information glow
+    uv run python -m passive_info.anim go2 --cut compare     # rigid and two SEAs in turn
     uv run python -m passive_info.anim go2 --cut talk
     uv run python -m passive_info.anim flow --cut loop --preview
     uv run python -m passive_info.anim go2 --stills 0.55       # PNGs at 55% of each contact
@@ -24,7 +25,7 @@ def main(argv=None) -> None:
     ap = argparse.ArgumentParser(prog="python -m passive_info.anim",
                                  description=__doc__.split("\n\n")[0])
     ap.add_argument("style", choices=("go2", "flow"))
-    ap.add_argument("--cut", choices=("loop", "talk"), default="loop")
+    ap.add_argument("--cut", choices=("loop", "compare", "talk"), default="loop")
     ap.add_argument("--ks", type=_ks, nargs="+", default=None,
                     help="designs: 'rigid' and/or stiffnesses. Loop default: rigid 1e4 1e3; "
                          "talk compares rigid against each listed stiffness (default 1e4 1e3)")
@@ -36,7 +37,7 @@ def main(argv=None) -> None:
     ap.add_argument("--gain", type=float, default=250.0, help="display motion gain")
     ap.add_argument("--workers", type=int, default=None)
     ap.add_argument("--no-webm", action="store_true")
-    ap.add_argument("--no-text", action="store_true", help="loop cut without any labels")
+    ap.add_argument("--no-text", action="store_true", help="compare cut without any labels")
     ap.add_argument("--stills", type=float, nargs="*", default=None,
                     help="render PNGs at these fractions of each contact instead of a video")
     ap.add_argument("--out", type=pathlib.Path, default=compose.OUT)
@@ -45,20 +46,24 @@ def main(argv=None) -> None:
     kind = "go2" if a.style == "go2" else "proto"
     w, h = (960, 540) if a.preview else a.size
     if a.cut == "loop":
+        if a.style != "go2":
+            ap.error("the single-design loop exists for the go2 style; use --cut compare")
+        job = compose.build_info_loop(w, h, a.fps, a.slow or 80.0, a.gain)
+    elif a.cut == "compare":
         ks = tuple(a.ks) if a.ks else data.DEFAULT_KS
         job = compose.build_loop(kind, ks, w, h, a.fps, a.slow or 55.0, a.gain,
                                  text=not a.no_text)
     else:
         pair = tuple(k for k in (a.ks or (1.0e4, 1.0e3)) if k is not None)
         job = compose.build_talk(kind, pair, w, h, a.fps, a.slow or 90.0, a.gain)
-    name = (f"{a.style}_{a.cut}" + ("_notext" if a.cut == "loop" and a.no_text else "")
+    name = (f"{a.style}_{a.cut}" + ("_notext" if a.cut == "compare" and a.no_text else "")
             + ("_preview" if a.preview else ""))
 
     t0 = time.time()
     if a.stills is not None:
         fr = a.stills or [0.55]
         idx = []
-        if a.cut == "loop":
+        if a.cut in ("loop", "compare"):
             for i in range(len(job.ks)):
                 idx += compose.contact_frames(job, i, fr)
         else:

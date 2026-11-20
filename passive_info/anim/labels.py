@@ -196,3 +196,102 @@ def loop_overlay(img, job, sc, shot, screen: dict):
         q = np.asarray(screen[key], float)
         style.text(img, (q[0] + dx * px, q[1]), word, 15 * px, FAINT, "regular",
                    "rm" if dx < 0 else "lm")
+
+
+# ---------------------------------------------------------------------------------------
+# The single-design loop: what the glow means, how many bits, and the force plot
+# ---------------------------------------------------------------------------------------
+
+INFO_TITLE = "Information about a contact force in the motion of a robot leg"
+INFO_LEGEND = ("Glow: information about the force in the motion of each part",
+               "Dots: new information, moving from the contact into the leg")
+
+
+def _force_plot(img, x0, y0, w, h, d, smp, px, alpha):
+    """The applied force so far, and the band of forces consistent with the motion so far."""
+    C = style.INFO
+    n_w = d.n_contact
+    f = d.force[:n_w]
+    lo, hi = -100.0, 220.0
+    X = lambda i: x0 + w * i / (n_w - 1)
+    Y = lambda v: y0 + h * (hi - np.clip(v, lo, hi)) / (hi - lo)
+    ink = np.array(FAINT) * 0.5 * alpha
+
+    style.line(img, (x0, Y(0)), (x0 + w, Y(0)), ink, 1.0 * px)
+    for v in (0, 100, 200):
+        style.text(img, (x0 - 10 * px, Y(v)), f"{v}", 13 * px, FAINT, "regular", "rm", alpha)
+    style.text(img, (x0 - 10 * px, y0 - 16 * px), "N", 13 * px, FAINT, "regular", "rm", alpha)
+    for ms in (0, 20, 40, 60, 80):
+        x = x0 + w * ms / 85.0
+        style.line(img, (x, y0 + h), (x, y0 + h + 5 * px), ink, 1.0 * px)
+        style.text(img, (x, y0 + h + 9 * px), f"{ms}", 13 * px, FAINT, "regular", "ma", alpha)
+    style.text(img, (x0 + w, y0 + h + 26 * px), "time into the contact, ms", 13 * px, FAINT,
+               "regular", "ra", alpha)
+
+    # the band, over the whole window: wide ahead of the current time, narrow behind it
+    i = np.arange(n_w)
+    top = smp.post_mean + 2 * smp.post_sd
+    bot = smp.post_mean - 2 * smp.post_sd
+    poly = ([(X(k), Y(top[k])) for k in i] + [(X(k), Y(bot[k])) for k in i[::-1]])
+    style.fill_poly(img, poly, C * 0.22 * alpha * smp.info_level)
+    style.polyline(img, [(X(k), Y(top[k])) for k in i], C * 0.5 * alpha * smp.info_level, 1.0 * px)
+    style.polyline(img, [(X(k), Y(bot[k])) for k in i], C * 0.5 * alpha * smp.info_level, 1.0 * px)
+
+    # the applied force, up to now
+    now = int(round(smp.t_ms / 85.0 * (n_w - 1)))
+    if now >= 1 and smp.info_level > 0:
+        style.polyline(img, [(X(k), Y(f[k])) for k in range(now + 1)],
+                       np.array(BRIGHT) * 0.9 * alpha * smp.info_level, 1.8 * px)
+    xc = X(now)
+    style.line(img, (xc, y0 - 4 * px), (xc, y0 + h), np.array(BRIGHT) * 0.25 * alpha, 1.0 * px)
+
+    # key
+    ky = y0 - 30 * px
+    style.line(img, (x0 + 10 * px, ky), (x0 + 34 * px, ky), np.array(BRIGHT) * 0.9 * alpha, 1.8 * px)
+    style.text(img, (x0 + 42 * px, ky), "force applied at the foot", 14 * px, DIM, "regular", "lm",
+               alpha)
+    ky2 = ky - 24 * px
+    style.fill_poly(img, [(x0 + 10 * px, ky2 - 5 * px), (x0 + 34 * px, ky2 - 5 * px),
+                          (x0 + 34 * px, ky2 + 5 * px), (x0 + 10 * px, ky2 + 5 * px)],
+                    C * 0.35 * alpha)
+    style.text(img, (x0 + 42 * px, ky2), "forces consistent with the motion of the leg so far",
+               14 * px, DIM, "regular", "lm", alpha)
+
+
+def info_overlay(img, job, sc, shot, screen: dict):
+    """Draw the text and the force plot of the single-design loop, in place."""
+    H, W = img.shape[:2]
+    px = H / 1080.0
+    d = sc.designs[shot.design]
+    smp = sample(d, shot)
+
+    style.text(img, (56 * px, 60 * px), INFO_TITLE, 26 * px, BRIGHT, "medium", "la")
+    style.text(img, (56 * px, 98 * px),
+               "Go2 front-right leg with its motors off, rigid transmission", 16 * px, DIM,
+               "regular", "la")
+
+    on = smp.info_level * float(shot.t >= 0)
+    style.text(img, (W - 56 * px, 56 * px), f"{smp.bits:.0f} bits", 34 * px, BRIGHT, "light",
+               "ra", on)
+    style.text(img, (W - 56 * px, 104 * px), "information about the force", 16 * px, DIM,
+               "regular", "ra", on)
+    style.text(img, (W - 56 * px, 126 * px), "in the motion of the whole leg so far", 16 * px,
+               FAINT, "regular", "ra", on)
+
+    for k, line in enumerate(INFO_LEGEND):
+        style.text(img, (56 * px, H - (64 - 26 * k) * px), line, 16 * px, DIM, "regular", "la")
+    style.text(img, (W / 2, H - 22 * px),
+                f"Motion scaled up {job.gain:g} times   ·   time slowed down {job.slow:g} times",
+                14 * px, FAINT, "regular", "ms")
+
+    _force_plot(img, W - 640 * px, H - 250 * px, 580 * px, 170 * px, d, smp, px, 1.0)
+
+    if not screen:
+        return
+    idx = {e: i for i, e in enumerate(d.elements)}
+    pb = lambda e: smp.part_bits[idx[e]]
+    _callout(img, screen["contact"], (-210, 70), f"foot contact   {pb('ground'):.0f} bits", px,
+             1.0, "rm")
+    _callout(img, screen["rotor"], (-150, 40), f"knee motor rotor   {pb('rotor_calf'):.0f} bits",
+             px, 1.0, "rm")
+    _callout(img, screen["calf"], (170, 10), f"calf   {pb('calf'):.0f} bits", px, 1.0, "lm")

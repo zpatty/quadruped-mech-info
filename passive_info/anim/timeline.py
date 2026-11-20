@@ -65,6 +65,10 @@ class Sample:
     bits: float
     force: float
     t_ms: float
+    part_bits: np.ndarray           #: bits in each element, scaled by the shot's spec_level
+    post_mean: np.ndarray           #: centre of the band of consistent forces over the window
+    post_sd: np.ndarray             #: its standard deviation
+    info_level: float               #: visibility of the information marks, 0..1
 
 
 def sample(d: Design, shot: Shot) -> Sample:
@@ -79,7 +83,11 @@ def sample(d: Design, shot: Shot) -> Sample:
                   energy=b2 * lerp(d.energy) * on, hue_w=lerp(d.hue_w),
                   spec=lerp(d.spec_t) * shot.spec_level * on,
                   bits=float(lerp(d.bits_t)) * on, force=float(lerp(d.force)) * on,
-                  t_ms=max(0.0, min(shot.t, T_WINDOW)) * 1e3)
+                  t_ms=max(0.0, min(shot.t, T_WINDOW)) * 1e3,
+                  part_bits=lerp(d.part_bits) * shot.spec_level * on,
+                  post_mean=lerp(d.post_mean) if on else d.post_mean[0],
+                  post_sd=lerp(d.post_sd) if on else d.post_sd[0],
+                  info_level=float(shot.spec_level))
 
 
 def particle_track(sc: Scenario, shots: list[Shot], fps: float, n_quanta: int = 520,
@@ -104,3 +112,23 @@ def energy_ref(sc: Scenario) -> float:
     energy stays dim.
     """
     return float(max(d.energy.max() for d in sc.designs))
+
+
+def info_track(sc: Scenario, shots: list[Shot], fps: float, n_dots: int = 320,
+               color=None, seed: int = 0) -> list[FrameParticles]:
+    """Dots for new information: one dot per fixed number of bits in an element.
+
+    Bits never decrease during the contact, so every dot starts at the contact and moves to
+    the element that gained it. The dots fade out only when the display fades at the end.
+    """
+    d0 = sc.designs[0]
+    peak = max(float(d.part_bits.sum(1).max()) for d in sc.designs)
+    color = style.INFO if color is None else np.asarray(color)
+    tr = Transport(d0.elements, d0.edges, quantum=peak / n_dots, entry="ground",
+                   hues=color[None, :], seed=seed, max_birth_per_frame=40, fade_time=0.9)
+    ones = np.ones((len(d0.elements), 1))
+    out = []
+    for sh in shots:
+        smp = sample(sc.designs[sh.design], sh)
+        out.append(tr.step(smp.part_bits, ones, 1.0 / fps))
+    return out

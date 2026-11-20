@@ -480,3 +480,108 @@ def _spectrum_ring(L, stage, geo, d, smp, hues, px):
     bar = stage.project(c + np.array([r_bar * np.cos(a_bar), r_bar * np.sin(a_bar), 0]))[0]
     return dict(ring_low=end(angs[0] - dth), ring_high=end(angs[-1] + dth), ring_mid=end(mid),
                 ring_bar=bar)
+
+
+# ---------------------------------------------------------------------------------------
+# The single-design loop: glow and dots show information, not energy
+# ---------------------------------------------------------------------------------------
+
+def info_level(bits: float, b_ref: float) -> float:
+    """Display level for an element with `bits` about the force. Nearly linear in bits, with a
+    soft knee so that a large part with a small share of the bits stays dim."""
+    a = float(np.clip(max(bits, 0.0) / b_ref, 0.0, 1.0))
+    return a * a / (a + 0.12) * 1.12
+
+
+def draw_info(stage: Go2Stage, d, smp, parts, parts_prev, smp_prev, b_ref: float,
+              t_anim: float, nxt) -> np.ndarray:
+    """Compose one frame of the single-design loop (HxWx3 float32, linear light)."""
+    import cv2
+
+    W, H = stage.W, stage.H
+    px = H / 1080.0
+    C = style.INFO.astype(np.float32)
+    idx = {e: i for i, e in enumerate(d.elements)}
+    lvl = lambda e: info_level(smp.part_bits[idx[e]], b_ref)
+
+    stage.pose(smp_prev.joint_dev)
+    geo_prev = Geometry(stage.anchors(), smp_prev.rotor_dev, smp_prev.joint_dev, stage.gain)
+    stage.pose(smp.joint_dev)
+    rgb, body = stage.render()
+    geo = Geometry(stage.anchors(), smp.rotor_dev, smp.joint_dev, stage.gain)
+    proj = lambda P: stage.project(P)[0]
+
+    base = rgb * 3.2
+    lum = rgb.mean(-1)
+    shade = (0.35 + 0.65 * np.clip(lum / max(np.percentile(lum[body > 0], 95), 1e-6), 0, 1.4)
+             if (body > 0).any() else np.ones_like(lum))
+    b = np.where(body > 0, body, -1).astype(np.int32)
+    edge = np.zeros_like(b, bool)
+    edge[:, 1:] |= b[:, 1:] != b[:, :-1]
+    edge[1:, :] |= b[1:, :] != b[:-1, :]
+    edge = cv2.dilate(edge.astype(np.uint8), np.ones((2, 2), np.uint8)).astype(np.float32)
+    leg = np.zeros_like(edge)
+    for p in PARTS:
+        leg += stage.body_mask(body, p)
+    base += edge[..., None] * (0.035 + 0.05 * cv2.dilate(leg, np.ones((5, 5)))[..., None]) * style.INK
+
+    L = np.zeros((H, W, 3), np.float32)
+
+    # each link glows with the information about the force in its own motion
+    for p in PARTS:
+        a = lvl(p)
+        if a > 1e-3:
+            m = stage.body_mask(body, p)
+            L += (m * shade)[..., None] * C * (0.6 * a)
+            L += style.blur(m, 9 * px)[..., None] * C * (0.3 * a)
+
+    # rotors: a ring per joint that fills with light; the shaft that gears it to the joint
+    for p in PARTS:
+        g = geo.rot[p]
+        a = lvl(f"rotor_{p}")
+        style.fill_poly(L, proj(geo.ring(p, r=ROTOR_R * 0.95)), C * 0.28 * a)
+        style.polyline(L, proj(geo.ring(p)), style.INK * 0.12 + C * 0.9 * a, 1.6 * px, closed=True)
+        for k in range(3):
+            th = g["spin"] + 2 * np.pi * k / 3
+            dvec = np.cos(th) * g["e1"] + np.sin(th) * g["e2"]
+            style.line(L, proj(g["c"] + 0.55 * ROTOR_R * dvec), proj(g["c"] + ROTOR_R * dvec),
+                       style.INK * 0.2 + C * 0.8 * a, 1.6 * px)
+        style.line(L, proj(g["c"]), proj(g["joint"]), style.INK * 0.10, 2.2 * px)
+
+    # the foot contact: where the force is applied
+    cpt = geo.A["contact"]
+    th = np.linspace(0, 2 * np.pi, 64)
+    circ = lambda r: proj(cpt + np.stack([r * np.cos(th), r * np.sin(th), 0 * th], 1))
+    a_g = lvl("ground")
+    style.fill_poly(L, circ(CONTACT_R), C * 0.30 * a_g)
+    style.polyline(L, circ(CONTACT_R), style.INK * 0.10 + C * 0.7 * a_g, 1.2 * px, closed=True)
+    f_lvl = min(1.0, abs(smp.force) / 160.0)
+    for k in range(3):
+        ph = (t_anim * 0.7 + k / 3) % 1.0
+        style.polyline(L, circ(CONTACT_R * (1.0 + 1.8 * ph)), style.WHITE * 0.35 * f_lvl * (1 - ph),
+                       1.0 * px, closed=True)
+    if f_lvl > 0.01:
+        style.splat(L, proj(cpt), 7 * px, style.WHITE * 0.8 * f_lvl)
+
+    # dots: new information moving from the contact into the leg
+    if len(parts.pid):
+        P = proj(particle_positions(geo, list(d.elements), nxt, parts, t_anim))
+        prev = {}
+        if len(parts_prev.pid):
+            Pp = proj(particle_positions(geo_prev, list(d.elements), nxt, parts_prev,
+                                         t_anim - 1.0 / 30))
+            prev = {int(k): Pp[j] for j, k in enumerate(parts_prev.pid)}
+        for j in range(len(parts.pid)):
+            c = parts.hue[j] * parts.alpha[j]
+            q = prev.get(int(parts.pid[j]))
+            if q is not None and 0.5 < np.hypot(*(P[j] - q)) < 60 * px:
+                style.line(L, q + 0.3 * (P[j] - q), P[j], c * 0.5, 1.3 * px)
+            style.splat(L, P[j], 1.8 * px, c * 1.2)
+
+    rk = geo.rot["calf"]
+    A = geo.A
+    stage.screen = dict(contact=proj(cpt), rotor=proj(rk["c"] + ROTOR_R * rk["e2"]),
+                        calf=proj(A["foot"] + 0.55 * (A["calf_pos"] - A["foot"])),
+                        thigh=proj(0.5 * (A["calf_pos"] + A["thigh_pos"])))
+    out = base + style.glow(L, px)
+    return style.bloom(out, 12 * px, 0.7)
