@@ -1,5 +1,9 @@
 # Energy-based whitening: theory note
 
+This note is frozen. It continues, revised and extended, in the live textbook
+[Mechanical Intelligence](https://github.com/zpatty/mechanical-intelligence), which is
+published at <https://zpatty.github.io/mechanical-intelligence/>.
+
 `energy_whitening.pdf` is a companion note to the paper's Section III-A (Eq. 9). It covers:
 
 - what energy whitening does, and why;
