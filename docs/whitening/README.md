@@ -9,12 +9,25 @@
 - how it relates to the papers cited in the paper and to related work;
 - a numerical check of every claim on this repository's models.
 
+Part II (Sections 9–14) asks whether energy is the *right* choice:
+- a uniqueness theorem: energy is the only coordinate-free, local, scale-free,
+  time-symmetric noise metric that is invariant under free motion;
+- the proof that under energy noise free motion never creates information;
+- a comparison of the alternatives (per-coordinate, kinetic, frequency-weighted/action,
+  data-driven);
+- a thermodynamically consistent Langevin body, with noise injected through the dampers:
+  full-state information is capped by the contact damping for every design, and morphology
+  matters by routing information to the sensors;
+- a closing list of decisions for discussion.
+
+Section 1 explains the idea without proofs.
+
 | File | What it is |
 |---|---|
 | `energy_whitening.tex`, `refs.bib` | The note. Appendix B records which citations were read in full text. |
 | `checks.py` | One function per result. Run it to print every number quoted in the note. |
 | `make_figures.py` | Redraws `figures/*.pdf` from `checks.py`. |
-| `../../tests/test_energy_whitening.py` | Pytest versions of the checks (about 3 s). |
+| `../../tests/test_energy_whitening.py` | Pytest versions of the checks (about 15 s). |
 
 No library code changes; the golden tables are untouched.
 

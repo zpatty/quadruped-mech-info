@@ -458,6 +458,296 @@ def check_floating() -> dict:
                 phi0_trunk_force=float(phi0[0]))
 
 
+# =======================================================================================
+# Part II: is energy the right choice?
+# =======================================================================================
+
+def _mpow(S: np.ndarray, p: float) -> np.ndarray:
+    lam, V = np.linalg.eigh(S)
+    return (V * np.clip(lam, 1e-300, None) ** p) @ V.T
+
+
+def metric_Wp(K: np.ndarray, H: np.ndarray, p: float, w0: float) -> np.ndarray:
+    """Frequency-weighted precision form sum_i (omega_i / w0)^p * (modal energy form i).
+
+    p = 0 is the energy metric; p = -1 is action weighting (the quantum zero-point shape).
+    Built in whitened coordinates, where the modal energies are the blocks of
+    diag((Omega Omega^T)^{p/2}, (Omega^T Omega)^{p/2}), Omega = K^{1/2} H^{-1/2}.
+    `w0` only makes the units match the energy metric; it cancels in every design gap at
+    equal rank.
+    """
+    n = H.shape[0]
+    Eh = sym_sqrt(energy_metric(K, H))
+    Om = sym_sqrt(K) @ np.linalg.inv(sym_sqrt(H))
+    mid = np.zeros((2 * n, 2 * n))
+    mid[:n, :n] = _mpow(Om @ Om.T, p / 2.0) / w0 ** p
+    mid[n:, n:] = _mpow(Om.T @ Om, p / 2.0) / w0 ** p
+    return Eh @ mid @ Eh
+
+
+def _bits_with_W(s: Passive, W: np.ndarray, **kw) -> float:
+    return profile_bits(dataclasses.replace(s, C=sym_sqrt(W), readout="energy"), **kw)["bits"]
+
+
+def _state_W(n: int) -> np.ndarray:
+    w = omega_ref()
+    return np.diag(np.r_[np.ones(n), np.ones(n) / w ** 2])
+
+
+def _kinetic_W(s: Passive) -> np.ndarray:
+    return energy_metric(s.K, s.H, w=omega_ref())
+
+
+def check_uniqueness_flow(seed: int = 0) -> dict:
+    """d/dt (a q'Kq + b qdot'H qdot) = 2(a - b) qdot'Kq along H qdd = -K q (Theorem)."""
+    rng = np.random.default_rng(seed)
+    s = series_elastic(1e4, readout="energy")
+    worst = 0.0
+    for a, b in ((1.0, 1.0), (2.0, 1.0), (0.5, 3.0)):
+        for _ in range(50):
+            q, v = rng.standard_normal(s.n), rng.standard_normal(s.n)
+            acc = -np.linalg.solve(s.H, s.K @ q)
+            dW = 2 * a * v @ s.K @ q + 2 * b * v @ s.H @ acc
+            pred = 2 * (a - b) * v @ s.K @ q
+            worst = max(worst, abs(dW - pred) / (abs(v @ s.K @ q) + 1e-30))
+    return dict(max_rel_err=worst)
+
+
+def check_flow_invariance() -> dict:
+    """Which precision forms the undamped flow preserves: Phi^T W Phi = W ?"""
+    s = series_elastic(1e4, zeta_series=0.0, zeta_contact=0.0, readout="energy")
+    w0 = omega_ref()
+    forms = {"energy": energy_metric(s.K, s.H), "action (p=-1)": metric_Wp(s.K, s.H, -1, w0),
+             "p=+1": metric_Wp(s.K, s.H, 1, w0), "per-coordinate": _state_W(s.n),
+             "kinetic": _kinetic_W(s)}
+    out = {}
+    for name, W in forms.items():
+        dev = 0.0
+        for t in np.linspace(1e-4, 2e-2, 40):
+            Phi = sla.expm(s.A * t)
+            dev = max(dev, np.abs(Phi.T @ W @ Phi - W).max() / np.abs(W).max())
+        out[name] = dev
+    out["det_Phi"] = float(np.linalg.det(sla.expm(s.A * 7e-3)))   # Liouville: = 1
+    return out
+
+
+def check_locality() -> dict:
+    """Changing the GROUND spring changes the action metric's MOTOR-velocity entry.
+
+    The energy metric's (theta_m-dot, theta_m-dot) entry is I_rot whatever k_i is: each
+    element contributes its own term. A modal weighting is a matrix function of H^{-1}K,
+    so every element influences every entry.
+    """
+    w0 = omega_ref()
+    out = {}
+    for ki in (1e5, 1e6, 1e7):
+        s = series_elastic(1e4, k_i=ki, readout="energy")
+        idx = 2 * s.n - 1
+        out[ki] = dict(energy=float(energy_metric(s.K, s.H)[idx, idx]),
+                       action=float(metric_Wp(s.K, s.H, -1, w0)[idx, idx] * w0))
+    return out
+
+
+def check_free_motion(t_max: float = 0.02, n: int = 400, bits0: float = 2.0) -> dict:
+    """Information about a scalar signal stored in the state, under free motion.
+
+    The signal Y enters as x(0) = v Y with v along the motor velocity. Each metric's noise
+    scale is set so that I(0) = `bits0`. Undamped: energy and action stay flat (they are
+    flow-invariant), while per-coordinate and kinetic oscillate, i.e. free motion "creates"
+    information. Damped: energy can only decrease.
+    """
+    times = np.linspace(0.0, t_max, n)
+    out = {"t": times}
+    for damped in (False, True):
+        kw = {} if damped else dict(zeta_series=0.0, zeta_contact=0.0)
+        s = series_elastic(1e4, readout="energy", **kw)
+        w0 = omega_ref()
+        forms = {"energy": energy_metric(s.K, s.H), "action": metric_Wp(s.K, s.H, -1, w0),
+                 "per-coordinate": _state_W(s.n), "kinetic": _kinetic_W(s)}
+        res = {}
+        E = forms["energy"]
+        for name, W in forms.items():
+            # start where W resolves the state worst relative to its energy: the
+            # generalized eigenvector of (W, E) with the smallest eigenvalue. For the
+            # energy metric every direction is equivalent; take the motor velocity.
+            if name == "energy":
+                v = np.zeros(4)
+                v[3] = 1.0
+            else:
+                lam, V = sla.eigh(W, E)
+                v = V[:, 0] / np.linalg.norm(V[:, 0])
+            snr0 = 2.0 ** (2 * bits0) - 1.0
+            scale = snr0 / float(v @ W @ v)
+            I = []
+            for t in times:
+                u = sla.expm(s.A * t) @ v
+                I.append(0.5 * np.log2(1.0 + scale * float(u @ W @ u)))
+            res[name] = np.array(I)
+        out["damped" if damped else "undamped"] = res
+    return out
+
+
+def check_alternatives_sea(ks_list=(1e3, 1e4, 1e6, 1e8, 1e10)) -> dict:
+    """Stiff-limit gap and coordinate-invariance spread for each candidate rule."""
+    w0 = omega_ref()
+    r = proprioceptive(readout="energy")
+    rules = {f"p={p}": (lambda s, p=p: metric_Wp(s.K, s.H, p, w0)) for p in (-2, -1, 0, 1, 2, 3)}
+    rules["kinetic"] = _kinetic_W
+    rules["per-coordinate"] = lambda s: _state_W(s.n)
+    from passive_info.information import SIGMA_THETA
+    gaps, spread = {}, {}
+    for name, rule in rules.items():
+        # the per-coordinate rule is quoted at the encoder resolution, as in the code's
+        # "state" readout; the energy-unit rules at SIGMA_ENERGY
+        kw = dict(sigma=SIGMA_THETA) if name == "per-coordinate" else {}
+        base = _bits_with_W(r, rule(r), **kw)
+        gaps[name] = np.array([_bits_with_W(sk, rule(sk), **kw) - base for sk in
+                               (series_elastic(float(k), readout="energy") for k in ks_list)])
+        vals = [_bits_with_W(sT, rule(sT), **kw) for sT in
+                (reparametrized_sea(1e4, T, "energy") for T in REPARAMETRIZATIONS.values())]
+        spread[name] = max(vals) - min(vals)
+    return dict(ks=np.asarray(ks_list), gaps=gaps, spread=spread)
+
+
+def check_alternatives_rod(Ns=(4, 8, 16, 32, 64), p: dict = ROD) -> dict:
+    """Mesh refinement under each rule."""
+    out = {}
+    for name in ("p=-1", "p=0", "p=1", "kinetic", "per-node"):
+        vals = []
+        for N in Ns:
+            A, B, K, H, w1 = rod_system(N, p)
+            if name.startswith("p="):
+                W = metric_Wp(K, H, float(name[2:]), w1)
+                sig = p["sigma_energy"]
+            elif name == "kinetic":
+                W = energy_metric(K, H, w=w1)
+                sig = p["sigma_energy"]
+            else:
+                W = np.diag(np.r_[np.ones(N), np.ones(N) / w1 ** 2])
+                sig = p["sigma_node"]
+            M = _response(A, B, sym_sqrt(W), p["band_hz"])
+            vals.append(bits_from_gram((p["sigma_a"] / sig) ** 2 * (M.T @ M)))
+        out[name] = np.array(vals)
+    return dict(N=np.asarray(Ns), bits=out)
+
+
+def check_data_driven_whitening(sigma_n: float = 0.1) -> dict:
+    """Whitening the response by its own covariance erases the body.
+
+    y = M w is whitened on the range of M by (sigma_w^2 M M^T)^{+1/2}, then isotropic noise
+    sigma_n is added. Every full-rank body gives (d/2) log2(1 + sigma_n^-2).
+    """
+    out = {}
+    for name, s in (("rigid", proprioceptive(readout="energy")),
+                    ("SEA 70", series_elastic(70.0, readout="energy")),
+                    ("SEA 1e4", series_elastic(1e4, readout="energy"))):
+        M = response_matrix(s)
+        U, sv, _ = np.linalg.svd(SIGMA_A * M, full_matrices=False)
+        Wh = (U / sv) @ U.T                        # (sigma_w^2 M M^T)^{+1/2} on range
+        G = (Wh @ (SIGMA_A * M)).T @ (Wh @ (SIGMA_A * M)) / sigma_n ** 2
+        out[name] = bits_from_gram(G)
+    d = n_modes()
+    out["predicted"] = 0.5 * d * np.log2(1 + sigma_n ** -2)
+    return out
+
+
+# ---------------------------------------------------------------------------------------
+# The Langevin body: noise injected through the dampers (fluctuation-dissipation)
+# ---------------------------------------------------------------------------------------
+
+def _damping(s: Passive) -> np.ndarray:
+    return -s.H @ s.A[s.n:, s.n:]                    # A[n:, n:] = -H^{-1} D
+
+
+def langevin_bits(s: Passive, C: np.ndarray, eps: float, sigma_T2: float | None = None,
+                  fs: float = FS, band_hz: float = 100.0) -> float:
+    """Bits about the force profile when the body is thermalized by its own dampers.
+
+    H qdd + D qd + K q = J^T f + xi, E[xi xi^T] = 2 sigma_T^2 D delta, started from the
+    Gibbs law N(0, sigma_T^2 E^{-1}), observed through C with extra readout noise eps.
+    The noise trajectory is stationary Gauss-Markov: Cov(x_k, x_l) = A_d^{k-l} P (k >= l),
+    which is exact because P is the FDT-stationary covariance (`gibbs_pair`).
+    """
+    sigma_T2 = SIGMA_ENERGY ** 2 if sigma_T2 is None else sigma_T2
+    n2 = 2 * s.n
+    Ad, _ = zoh(s.A, s.B_F, 1.0 / fs)
+    P = sigma_T2 * np.linalg.inv(energy_metric(s.K, s.H))
+    M = response_matrix(dataclasses.replace(s, C=C), fs=fs, band_hz=band_hz)
+    m = C.shape[0]
+    n_t = M.shape[0] // m
+    powers = [np.eye(n2)]
+    for _ in range(n_t):
+        powers.append(Ad @ powers[-1])
+    S = np.zeros((n_t * m, n_t * m))
+    CP = C @ P
+    for k in range(n_t):
+        for l in range(k + 1):
+            blk = C @ powers[k - l] @ CP.T
+            S[k * m:(k + 1) * m, l * m:(l + 1) * m] = blk
+            S[l * m:(l + 1) * m, k * m:(k + 1) * m] = blk.T
+    S += eps ** 2 * np.eye(n_t * m)
+    Z = np.linalg.solve(np.linalg.cholesky(S), M)
+    return bits_from_gram(SIGMA_A ** 2 * (Z.T @ Z))
+
+
+def langevin_innovation_g(s: Passive, fs: float = FS, sigma_T2: float | None = None) -> float:
+    """g = B_d^T Q_d^{-1} B_d: the per-sample SNR of the force against the thermal kick."""
+    sigma_T2 = SIGMA_ENERGY ** 2 if sigma_T2 is None else sigma_T2
+    Ad, Bd = zoh(s.A, s.B_F, 1.0 / fs)
+    _, Q = gibbs_pair(s.K, s.H, Ad, label=s.label)
+    return float((Bd.T @ np.linalg.solve(sigma_T2 * Q, Bd)).item())
+
+
+def langevin_innovation_bits(s: Passive, fs: float = FS, band_hz: float = 100.0) -> float:
+    """Full-state observation: bits = 1/2 logdet(I + sigma_w^2 g Phi^T Phi)."""
+    g = langevin_innovation_g(s, fs)
+    n_t = int(round(T_WINDOW * fs)) + 1
+    Phi = mode_basis(n_t, n_modes(T_WINDOW, band_hz))[:-1]   # last sample drives nothing
+    return bits_from_gram(SIGMA_A ** 2 * g * (Phi.T @ Phi))
+
+
+def check_langevin_innovations() -> dict:
+    out = {}
+    for name, s in (("rigid", proprioceptive(readout="energy")),
+                    ("SEA 1e4", series_elastic(1e4, readout="energy"))):
+        out[name] = dict(innovations=langevin_innovation_bits(s),
+                         stacked=langevin_bits(s, np.eye(2 * s.n), 0.0))
+    return out
+
+
+def check_langevin_dt_limit(fs_list=(1e2, 1e3, 4e3, 16e3, 64e3)) -> dict:
+    """g sigma_T^2 / (dt J D^+ J^T) -> 1/2 as dt -> 0, for every design."""
+    out = {}
+    designs = [("rigid", proprioceptive(readout="energy"))] + [
+        (f"SEA {k:g}", series_elastic(k, readout="energy")) for k in (70.0, 1e4, 1e6)]
+    for name, s in designs:
+        JDJ = float((s.J @ np.linalg.pinv(_damping(s)) @ s.J.T).item())
+        out[name] = dict(JDJ=JDJ, ratio=np.array([
+            langevin_innovation_g(s, fs) * SIGMA_ENERGY ** 2 * fs / JDJ for fs in fs_list]))
+    return dict(fs=np.asarray(fs_list), rows=out)
+
+
+def check_langevin_designs(ks_list=(70.0, 3e2, 1e3, 3e3, 1e4, 3e4, 1e5, 1e6)) -> dict:
+    """SEA vs rigid under Langevin noise for several readouts, and the readout-only models."""
+    from passive_info.information import SIGMA_THETA
+    designs = [("rigid", None)] + [(k, float(k)) for k in ks_list]
+    rows = {}
+    for name, ks in designs:
+        s = proprioceptive(readout="energy") if ks is None else series_elastic(ks, readout="energy")
+        n2 = 2 * s.n
+        Ce = sym_sqrt(energy_metric(s.K, s.H))
+        Cm = np.zeros((1, n2))
+        Cm[0, s.n - 1] = 1.0
+        rows[name] = dict(
+            full=langevin_bits(s, np.eye(n2), 0.0),
+            full_readout=langevin_bits(s, Ce, SIGMA_ENERGY),
+            motor=langevin_bits(s, Cm, 1e-9),
+            motor_encoder=langevin_bits(s, Cm, SIGMA_THETA),
+            readout_energy=profile_bits(s)["bits"],
+            readout_motor=profile_bits(dataclasses.replace(s, C=Cm, readout="motor"))["bits"])
+    return dict(ks=np.asarray(ks_list, float), rows=rows)
+
+
 # ---------------------------------------------------------------------------------------
 
 def report() -> None:
@@ -486,6 +776,19 @@ def report() -> None:
     print("MC_W", check_morphological())
     print("rod", check_rod())
     print("floating", check_floating())
+    print("--- Part II")
+    print("uniqueness identity", check_uniqueness_flow())
+    print("flow invariance", check_flow_invariance())
+    print("locality", check_locality())
+    alt = check_alternatives_sea()
+    for k in alt["gaps"]:
+        print(f"  {k:15s} stiff gaps {alt['gaps'][k]}  invariance spread {alt['spread'][k]:.2e}")
+    print("rod by rule", check_alternatives_rod()["bits"])
+    print("data-driven", check_data_driven_whitening())
+    print("langevin innovations", check_langevin_innovations())
+    print("langevin dt limit", check_langevin_dt_limit())
+    for k, v in check_langevin_designs()["rows"].items():
+        print("  langevin", k, {kk: round(vv, 3) for kk, vv in v.items()})
 
 
 if __name__ == "__main__":

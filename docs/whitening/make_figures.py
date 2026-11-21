@@ -159,9 +159,121 @@ def fig_rod():
     return r
 
 
+def fig_ellipse():
+    """Mass on a spring: energy-shaped noise follows the constant-energy ellipses."""
+    k, m, sig = 4.0, 1.0, 0.25
+    rng = np.random.default_rng(1)
+    th = np.linspace(0, 2 * np.pi, 200)
+    fig, axes = plt.subplots(1, 2, figsize=(6.0, 2.7), sharex=True, sharey=True)
+    for ax, title, cov in ((axes[0], "(a) energy-shaped noise", np.diag([sig ** 2 / k, sig ** 2 / m])),
+                           (axes[1], "(b) per-coordinate noise", np.diag([0.09, 0.09]) * sig ** 2 / 0.25)):
+        for e in (0.5, 1.0, 1.5):
+            ax.plot(e * sig * np.cos(th) / np.sqrt(k), e * sig * np.sin(th) / np.sqrt(m),
+                    color=INK2, lw=0.7)
+        pts = rng.multivariate_normal([0, 0], cov, 400)
+        ax.scatter(pts[:, 0], pts[:, 1], s=3, color=C1 if ax is axes[0] else C2, alpha=0.6,
+                   linewidths=0)
+        ax.set_title(title, loc="left")
+        ax.set_xlabel("position $q$")
+        ax.set_aspect("equal")
+    axes[0].set_ylabel(r"velocity $\dot q$")
+    fig.tight_layout()
+    _save(fig, "ellipse")
+
+
+def fig_free_motion():
+    r = checks.check_free_motion()
+    t = r["t"] * 1e3
+    fig, (a, b) = plt.subplots(1, 2, figsize=(6.4, 2.5), sharey=True)
+    for ax, key, title in ((a, "undamped", "(a) undamped"), (b, "damped", "(b) with the leg's damping")):
+        res = r[key]
+        ax.plot(t, res["per-coordinate"], color=C2, label="per-coordinate")
+        ax.plot(t, res["kinetic"], color=C4, ls="--", label=r"kinetic ($\omega_{\rm ref}$)")
+        ax.plot(t, res["action"], color=C3, ls=":", label="action ($p=-1$)")
+        ax.plot(t, res["energy"], color=C1, label="energy")
+        ax.axhline(2.0, color=INK2, lw=0.6)
+        ax.set_xlabel("time since the signal was stored (ms)")
+        ax.set_title(title, loc="left")
+    a.set_ylabel("bits about the stored signal")
+    a.legend(loc="lower right", ncol=2, fontsize=7)
+    a.set_ylim(0, 4.1)
+    fig.tight_layout()
+    _save(fig, "free_motion")
+    return r
+
+
+def fig_alternatives():
+    sea = checks.check_alternatives_sea()
+    rod = checks.check_alternatives_rod()
+    fig, (a, b) = plt.subplots(1, 2, figsize=(6.4, 2.6))
+    ks = sea["ks"]
+    styles = {"p=-1": (C3, ":"), "p=0": (C1, "-"), "p=1": (C4, "--"), "p=2": (INK2, "-."),
+              "p=3": (C2, "-")}
+    for name, (c, ls) in styles.items():
+        a.semilogx(ks, np.abs(sea["gaps"][name]) + 1e-6, color=c, ls=ls)
+    a.set_yscale("log")
+    a.set_ylim(1e-6, 2e2)
+    a.text(1.4e9, 120, "$p=3$", fontsize=7.5)
+    a.text(1.4e9, 2.2, "$p=2$", fontsize=7.5)
+    a.text(1.4e9, 1.4e-3, "$p=1$", fontsize=7.5)
+    a.text(2e6, 3e-6, "$p\\leq0$", fontsize=7.5)
+    a.set_xlabel(r"series stiffness $k_s$ (N m/rad)")
+    a.set_ylabel(r"$|$bits(SEA) $-$ bits(rigid)$|$")
+    a.set_title(r"(a) stiff limit, $W_p=\sum_i\omega_i^p E_i$", loc="left")
+
+    N = rod["N"]
+    for name, (c, ls, lab) in {"p=-1": (C3, ":", "action $p=-1$"), "p=0": (C1, "-", "energy $p=0$"),
+                               "p=1": (C4, "--", "$p=+1$"), "kinetic": (INK2, "-.", "kinetic")}.items():
+        v = rod["bits"][name]
+        b.semilogx(N, v - v[-1], color=c, ls=ls, marker="o", markersize=3, base=2)
+        b.text(N[-1] * 1.15, v[0] - v[-1] if name == "p=1" else (v[-1] - v[-1]), "", fontsize=7)
+    b.text(5, -11, "$p=+1$ keeps growing", fontsize=7.5)
+    b.text(17, -2.2, "$p\\leq 0$, kinetic: converge", fontsize=7.5)
+    b.set_xlabel("finite elements $N$")
+    b.set_ylabel(r"bits $-$ bits($N=64$)")
+    b.set_title("(b) finite-element rod", loc="left")
+    fig.tight_layout()
+    _save(fig, "alternatives")
+    return sea, rod
+
+
+def fig_langevin():
+    r = checks.check_langevin_designs()
+    ks = r["ks"]
+    rows = r["rows"]
+    get = lambda key: np.array([rows[k][key] for k in ks]) - rows["rigid"][key]
+    fig, (a, b) = plt.subplots(1, 2, figsize=(6.4, 2.6))
+    a.semilogx(ks, get("full"), color=INK2, ls="-.")
+    a.semilogx(ks, get("motor"), color=C1, marker="o", markersize=3)
+    a.semilogx(ks, get("readout_motor"), color=C2, marker="s", markersize=3)
+    a.axhline(0, color=INK2, lw=0.6)
+    a.text(2e4, -4.5, "Langevin, full state", fontsize=7.5)
+    a.text(1.2e3, -22, "Langevin, motor encoder", fontsize=7.5)
+    a.text(1.3e4, 4.5, "readout noise, motor", fontsize=7.5)
+    a.set_xlabel(r"series stiffness $k_s$ (N m/rad)")
+    a.set_ylabel("bits(SEA) $-$ bits(rigid)")
+    a.set_title("(a) design gap by noise model", loc="left")
+
+    eff = np.array([rows[k]["motor"] / rows[k]["full"] for k in ks])
+    b.semilogx(ks, eff, color=C1, marker="o", markersize=3)
+    b.axhline(rows["rigid"]["motor"] / rows["rigid"]["full"], color=INK2, lw=0.8, ls="--")
+    b.text(80, rows["rigid"]["motor"] / rows["rigid"]["full"] - 0.08, "rigid transmission", fontsize=7.5)
+    b.set_ylim(0, 1.05)
+    b.set_xlabel(r"series stiffness $k_s$ (N m/rad)")
+    b.set_ylabel("motor bits / full-state bits")
+    b.set_title("(b) routing efficiency", loc="left")
+    fig.tight_layout()
+    _save(fig, "langevin")
+    return r
+
+
 if __name__ == "__main__":
     fig_invariance()
     fig_stiff_limit()
     fig_snr()
     fig_shapley()
     fig_rod()
+    fig_ellipse()
+    fig_free_motion()
+    fig_alternatives()
+    fig_langevin()

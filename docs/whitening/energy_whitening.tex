@@ -81,10 +81,133 @@ sentences and five citations. This note supplies the missing theory.
     \item it identifies exactly when a floating base's singular metric loses information.
   \end{itemize}
 \end{itemize}
+Part~II asks whether energy is the \emph{right} choice.
+\begin{itemize}[nosep]
+  \item Maximum entropy fixes the noise's shape only once energy is chosen. The choice
+        itself is justified by a uniqueness theorem: energy is the only noise metric that
+        is coordinate-free, local, free of outside scales, time-symmetric, and invariant
+        under free motion.
+  \item The last property is equivalent to ``free motion never creates information.''
+        Under energy noise, information changes only through work and dissipation.
+  \item The alternatives are compared: per-coordinate, kinetic, frequency-weighted
+        (including the quantum-like action weighting), and data-driven.
+  \item A thermodynamically consistent \emph{Langevin body}, with noise injected through
+        its dampers, shows that with the full state observed every design is capped at the
+        same contact-damping limit. Morphology matters by \emph{routing} information to
+        the sensors: the rigid transmission delivers 99.9\% of the limit to its motor
+        encoder, and the SEA climbs from 6\% to 99.5\% with stiffness.
+\end{itemize}
 Every claim is checked numerically on the repository's own models.
 \end{abstract}
 
 \tableofcontents
+
+%=========================================================================================
+\section{The idea in plain language}
+\label{sec:plain}
+
+This section explains the whole idea without proofs. The rest of the note makes each
+sentence precise.
+
+\paragraph{A deterministic mechanism carries infinite information.} The paper asks how much
+the leg's motion tells us about the force that pushed it. The leg obeys deterministic
+equations. If we knew them exactly and could read the state with perfect precision, we
+could run them backward and recover the force exactly. Recovering a real number exactly
+corresponds to infinitely many bits. So, strictly, every mechanism carries infinite
+information about the force, and comparing two designs would give ``$\infty$ vs
+$\infty$.'' To get a finite answer we must say how precisely the state can be known; that
+is, we must add noise. The noise is not a nuisance on top of the analysis. It \emph{is}
+the definition of resolution, and the answer depends on it.
+
+\paragraph{Relabeling changes nothing.} If you transform the observed quantity in a way
+that can be undone, the information stays the same. This covers converting meters to
+millimeters, rotating axes, or multiplying the state by any invertible matrix. Anything
+learnable from the original is learnable from the transformed version by undoing the
+transformation first, and vice versa.
+
+Whitening, $x=\Em^{1/2}x_q$, is such a transformation, so on its own it changes nothing.
+It matters only because of the order of operations: first transform, then add noise of the
+same size in every direction. Adding equal noise \emph{after} the transformation is the
+same as adding a particular, unequal noise \emph{before} it. So ``energy whitening'' is
+really a statement about what the noise on the physical state looks like.
+
+\paragraph{What the noise looks like.} Take a mass $m$ on a spring of stiffness $k$, with
+position $q$ and velocity $\dot q$. Whitening gives $x=(\sqrt k\,q,\sqrt m\,\dot q)$. Its
+squared length $kq^2+m\dot q^2$ is twice the stored energy, and every component is
+measured in $\sqrt{\mathrm J}$. Adding noise of standard deviation $\sigma$ to both
+components means, back in physical units:
+\begin{itemize}[nosep]
+  \item position noise of standard deviation $\sigma/\sqrt k$;
+  \item velocity noise of standard deviation $\sigma/\sqrt m$.
+\end{itemize}
+So stiff springs make position precise, and heavy masses make velocity precise. The reason
+is that both blurs carry \emph{the same energy}, $\frac12\sigma^2$. The rule being imposed
+is: \emph{two states that differ by less than a fixed amount of energy cannot be told
+apart.}
+
+Geometrically, the noise has the constant-energy ellipses as its contour lines
+(\cref{fig:ellipse}a). The alternative, ``add the same noise to each coordinate,'' asserts
+that an error of $10^{-4}$\,rad in an angle and $10^{-4}$\,rad/s in a velocity are equally
+hard to detect (\cref{fig:ellipse}b). The two quantities do not even share units, and the
+assertion changes when the units do.
+
+\begin{figure}[t]\centering
+\includegraphics[width=0.82\linewidth]{figures/ellipse.pdf}
+\caption{A mass on a spring ($k=4$, $m=1$, illustrative units). Grey curves are
+constant-energy ellipses. (a) Energy-shaped noise has the same ellipses as its contours:
+every perturbation of equal energy is equally likely. (b) Per-coordinate noise is round in
+whatever units the coordinates happen to use.}
+\label{fig:ellipse}
+\end{figure}
+
+\paragraph{Why this noise: maximum entropy.} Suppose the only thing we are willing to
+commit to is the noise's average energy. Choosing a distribution means making assumptions:
+a sharply peaked distribution claims to know a lot, and a lopsided one claims some
+directions matter more. The standard measure of how few assumptions a distribution makes
+is its \emph{entropy}. Jaynes' \emph{principle of maximum entropy} says: among all
+distributions consistent with what you know, choose the one with the largest entropy.
+
+Among all noise laws with a given average energy, the largest-entropy one is
+$p\propto\exp(-\text{energy}/T)$. For quadratic energy this is a Gaussian with covariance
+$T\,\Em^{-1}$, which is exactly the noise above, with $T=\sigma^2$. In whitened coordinates
+the constraint is simply ``average squared length is fixed,'' which treats every direction
+alike. The most even way to spread a fixed average squared length is the round Gaussian.
+
+\paragraph{Gibbs and equipartition.} The formula $p\propto\exp(-\text{energy}/T)$ is the
+Gibbs (Boltzmann) distribution: the law of a system in equilibrium with a heat bath. It
+implies \emph{equipartition}: every quadratic term in the energy holds $\frac12k_BT$ on
+average. For the mass on a spring, $\langle q^2\rangle=k_BT/k$ and $\langle\dot
+q^2\rangle=k_BT/m$, exactly the variances above. So the paper's noise blurs the body as if
+it were jiggling thermally at temperature $\sigma^2$.
+
+That temperature is a \emph{resolution} written in energy units, not real heat: the
+repository's $\sigma^2=10^{-4}$\,J is about $10^{16}$ times room-temperature $k_BT$. Only
+the \emph{shape} of the noise is fixed by physics. Its \emph{size} mostly sets the zero of
+the bit scale.
+
+\paragraph{Why it solves the paper's problem.} The SEA has an extra coordinate, the motor
+angle. As the spring stiffens it moves in lockstep with the joint angle.
+\begin{itemize}[nosep]
+  \item \emph{With per-coordinate noise}, the motor angle becomes a second, independently
+        noisy reading of the same signal. That is worth about half a bit per force mode,
+        8.47 bits here, so a stiff SEA appears ``smarter'' than the rigid leg it has
+        physically become.
+  \item \emph{With energy noise}, this cannot happen. A direction of motion earns
+        information only through the energy it stores, so relabeling or duplicating
+        coordinates never creates bits.
+\end{itemize}
+
+\paragraph{Is it the best choice?} Part~II (\cref{sec:right,sec:alternatives,sec:langevin,sec:capture})
+asks this directly.
+\begin{itemize}[nosep]
+  \item Maximum entropy justifies the noise's \emph{shape} once energy is chosen, not the
+        choice of energy itself.
+  \item That choice is justified separately: energy is the only noise metric with five
+        physical properties, the decisive one being that free motion can never create
+        information.
+  \item A noise model is not yet a measure of computation. A thermodynamically consistent
+        ``Langevin body'' shows what morphology can and cannot do.
+\end{itemize}
 
 %=========================================================================================
 \section{Setup, notation, and what is being asked}
@@ -400,13 +523,12 @@ So $h(p)\le h(g)$, with equality if and only if $p=g$ almost everywhere.
 
 \phys{If the only thing we are willing to assert about the body's resolution is
 \emph{how much energy} an indistinguishable perturbation carries, the least committal
-noise law (\citealp{jaynes1957information}, Sec.~2) is $\mathcal N(0,\sigma^2\Em^{-1})$.
+noise law \citep[Sec.~2]{jaynes1957information} is $\mathcal N(0,\sigma^2\Em^{-1})$.
 In whitened coordinates this is isotropic noise, which is exactly what the paper adds.
 
 Jaynes treats the discrete case (his Eqs.~(2-4) and (2-10), with the Boltzmann
 distribution in Sec.~3), and his footnote~6 sets the continuous case aside. The
-continuous argument above is the standard extension (\citealp{cover2006elements},
-Ch.~12). One caveat: it uses Lebesgue measure on $(q,\dot q)$. For constant $H$ this
+continuous argument above is the standard extension \citep[Ch.~12]{cover2006elements}. One caveat: it uses Lebesgue measure on $(q,\dot q)$. For constant $H$ this
 differs from Liouville measure on $(q,p)$ only by the constant factor $\det H$.}
 
 \begin{corollary}[Gibbs, equipartition, and the effective temperature]\label{cor:gibbs}
@@ -1265,13 +1387,563 @@ which is why \code{morphological\_bits} correctly refuses the free bench.}
 \end{itemize}
 
 %=========================================================================================
+\section{Part II. Is energy the right choice?}
+\label{sec:right}
+
+Sections~\ref{sec:setup}--\ref{sec:related} (Part~I) took the energy metric as given and showed what it does. This part asks whether it
+is the right choice for measuring mechanical intelligence, and what it leaves out.
+
+\subsection{What maximum entropy does and does not decide}
+
+The proof of \cref{thm:maxent} never uses the fact that $\Em$ is an energy. For \emph{any}
+positive-definite form $W$, the same three steps show that the maximum-entropy law under
+$\E[\nu^\top W\nu]=m\sigma^2$ is $\mathcal N(0,\sigma^2W^{-1})$. So maximum entropy turns
+a choice of \emph{what is held fixed} into a noise law. It does not make that choice.
+
+For example, constraining the mean \emph{action}, i.e.\ each mode's energy divided by its
+frequency, gives the action-weighted law. That is the shape of quantum zero-point noise
+(\cref{rem:quantum}). The real modeling assumption is ``resolution is measured in
+energy.'' The rest of this section justifies that assumption from properties a noise model
+should have.
+
+\subsection{Five requirements, and a uniqueness theorem}
+
+\begin{definition}[Mechanisms and noise rules]\label{def:rule}
+A mechanism is assembled from single-parameter elements:
+\begin{itemize}[nosep]
+  \item \emph{springs}: stiffness $k_e$ acting on a relative coordinate $s_e=a_e^\top q$;
+  \item \emph{inertias}: a positive-definite inertia matrix $M_m$ acting on a velocity
+        $u_m=B_m\dot q$;
+  \item \emph{dampers}: coefficient $b_e$ acting on $\dot s_e$.
+\end{itemize}
+Hence $K=\sum_ek_ea_ea_e^\top$, $H=\sum_mB_m^\top M_mB_m$ and $D=\sum_eb_ea_ea_e^\top$.
+A \emph{noise rule} assigns to every mechanism a positive-semidefinite quadratic form
+$W(q,\dot q)$, the precision of the body's resolution: noise $\mathcal N(0,\sigma^2W^{-1})$.
+\end{definition}
+
+The requirements, each with the reason it matters:
+\begin{enumerate}[label=(U\arabic*)]
+  \item \emph{Coordinate-free.} $W$ transforms with the coordinates
+        ($\tilde W=\mathcal T^\top W\mathcal T$ under $q=T\tilde q$), including rescalings of
+        each element's own coordinate. Otherwise relabeling changes the answer
+        (\cref{thm:invariance}).
+  \item \emph{Local and universal.} $W$ is a sum of one term per element. Each term depends
+        only on that element's parameter and kinematics, through a function fixed for each
+        element type. Adding a component somewhere must not change how precisely another
+        component's state is known; this is what makes components compose, stiff limits
+        behave (\cref{thm:limit}) and meshes converge (\cref{thm:mesh}). Universality says
+        the rule cannot know which spring is which.
+  \item \emph{No outside scales.} No dimensional constant other than the element's own
+        parameter may appear: no reference frequency, length or time. Otherwise the result
+        depends on an arbitrary choice; the \code{"kinetic"} readout's $\omega_{\rm ref}$
+        can flip the sign of the SEA--rigid comparison
+        (\code{test\_the\_ground\_decides\_whether\_series\_compliance\_helps\_or\_hurts}).
+  \item \emph{Time-reversal symmetric.} $W(q,-\dot q)=W(q,\dot q)$. Resolution should not
+        depend on the direction of motion.
+  \item \emph{Unchanged by free motion.} For every mechanism without dampers, $W$ is
+        constant along every solution of $H\ddot q+Kq=0$. \Cref{prop:work} shows this is
+        exactly the requirement that free motion never creates information.
+\end{enumerate}
+
+\begin{theorem}[Uniqueness of the energy metric]\label{thm:unique}
+A noise rule satisfies (U1)--(U5) if and only if
+$W=c\,(q^\top Kq+\dot q^\top H\dot q)=c\,x_q^\top\Em x_q$ for a constant $c>0$, i.e.\ it is
+the energy metric up to the overall noise scale.
+\end{theorem}
+\begin{proof}
+\emph{The energy metric satisfies all five.}
+\begin{itemize}[nosep]
+  \item (U1) is \cref{thm:invariance}.
+  \item (U2)--(U4) hold by inspection: $k_es_e^2$ and $u_m^\top M_mu_m$ are energies.
+  \item (U5) holds because energy is conserved without damping:
+        $\frac{d}{dt}(q^\top Kq+\dot q^\top H\dot q)=2\dot q^\top(Kq+H\ddot q)=0$.
+\end{itemize}
+
+\emph{Conversely, step 1: a spring.} By (U2) its term is a quadratic form in its own
+kinematics $(s,\dot s)$ with coefficients depending only on $k$:
+$\alpha_1(k)s^2+\alpha_2(k)s\dot s+\alpha_3(k)\dot s^2$.
+\begin{itemize}[nosep]
+  \item (U4) gives $\alpha_2=0$.
+  \item Rescaling the spring's coordinate, $s=\lambda\tilde s$, turns the stiffness into
+        $\tilde k=\lambda^2k$. By (U1) the term must keep its value:
+        $\alpha_1(\lambda^2k)\tilde s^2=\alpha_1(k)\lambda^2\tilde s^2$ for every
+        $\lambda>0$, so $\alpha_1(k)=\alpha\,k$ for a dimensionless constant $\alpha$.
+        Likewise $\alpha_3(k)\propto k$.
+  \item But $k\dot s^2$ has units of energy times time squared. Turning it into an energy
+        needs a time scale, which (U3) forbids. So $\alpha_3=0$, and the spring's term is
+        $\alpha\,k_es_e^2$.
+\end{itemize}
+
+\emph{Step 2: an inertia.} Its kinematics is a velocity $u$, and a position-dependent term
+would need a time scale (U3). So its term is $u^\top F(M)u$ for some matrix function $F$.
+\begin{itemize}[nosep]
+  \item (U1), applied to a change of the element's velocity coordinates $u=T\tilde u$
+        (which sends $M\mapsto T^\top MT$), requires $F(T^\top MT)=T^\top F(M)T$ for every
+        invertible $T$.
+  \item Taking $T=M^{-1/2}$ gives $F(M)=M^{1/2}F(I)M^{1/2}$.
+  \item Taking $T$ orthogonal gives $F(I)=T^\top F(I)T$ for every orthogonal $T$, so
+        $F(I)=\beta I$ (a matrix that commutes with all rotations is a multiple of the
+        identity).
+  \item Hence the term is $\beta\,u_m^\top M_mu_m$.
+\end{itemize}
+
+\emph{Step 3: a damper.} The same rescaling argument makes any term proportional to $b$.
+The candidates are $b\,s\dot s$, $b\,s^2$ and $b\,\dot s^2$:
+\begin{itemize}[nosep]
+  \item $b\,s\dot s$ is odd in time, which (U4) forbids;
+  \item $b\,s^2$ has units of energy times time, and $b\,\dot s^2$ is a power; turning
+        either into an energy needs a time scale, which (U3) forbids.
+\end{itemize}
+Dampers therefore contribute nothing.
+
+\emph{Step 4: free motion fixes the ratio.} By universality ((U2)) the constants $\alpha$
+and $\beta$ are the same for every element, so $W=\alpha\,q^\top Kq+\beta\,\dot q^\top
+H\dot q$. Along any solution of $H\ddot q=-Kq$,
+\[
+  \tfrac{d}{dt}W=2\alpha\,\dot q^\top Kq+2\beta\,\dot q^\top H\ddot q
+  =2(\alpha-\beta)\,\dot q^\top Kq .
+\]
+For any mechanism with a spring, some state has $\dot q^\top Kq\neq0$, so (U5) forces
+$\alpha=\beta=:c$.
+\end{proof}
+
+\begin{remark}[What the axioms do and do not exclude]
+\begin{itemize}[nosep]
+  \item \emph{Elements are single constitutive laws.} A Kelvin--Voigt element (spring and
+        damper as one element) has an internal time scale $b/k$. If it were treated as one
+        element, (U3) would allow a term $(b^2/k)\dot s^2$. Treating springs and dampers as
+        separate elements, as their additive force laws suggest, removes this.
+  \item \emph{Universality matters.} Without it, (U5) still forces $\alpha=\beta$, but only
+        within each mechanically connected component. Two disconnected bodies could carry
+        different noise scales.
+  \item \emph{Dissipation drops out by itself.} No assumption singled out damping; the
+        axioms exclude it from the metric.
+\end{itemize}
+\end{remark}
+
+\checked{The identity $\frac{d}{dt}W=2(\alpha-\beta)\dot q^\top Kq$ holds to
+$4\times10^{-14}$ on random SEA states (\code{check\_uniqueness\_flow}). Over 20\,ms of
+undamped SEA motion, the deviation of $\Phi^\top W\Phi$ from $W$ is $4\times10^{-13}$ for
+the energy and the frequency-weighted forms of \cref{sec:alternatives}, but $6.4$ for
+per-coordinate noise and $1.7$ for the kinetic metric (relative to $\max|W|$;
+\code{check\_flow\_invariance}).}
+
+\subsection{Free motion cannot create information}
+
+The fifth requirement looks like a technicality. It is the most important one for
+attributing computation to a body.
+
+\begin{proposition}[Information is created only by work]\label{prop:work}
+Store information about a random variable $Y$ in the body's state, $x(0)$, and let the
+body move freely ($f=0$). Observe $x(t)$ through physical noise $\nu\sim\mathcal
+N(0,\sigma^2W^{-1})$ independent of $Y$, and let $I_t=I(Y;x(t)+\nu)$. Write $\Phi(t)$ for
+the state-transition matrix.
+\begin{enumerate}[label=(\roman*)]
+  \item If $D=0$ and $\Phi^\top W\Phi=W$ (for example $W=\Em$), then $I_t=I_0$ for all
+        $t$.
+  \item If $W=\Em$ and $D\succeq0$, then $I_t$ is non-increasing in $t$.
+  \item If $D=0$ and $\Phi(t)^\top W\Phi(t)\neq W$ for some $t$, then there is a Gaussian
+        scalar $Y$ with $I_t>I_0$: free motion creates apparent information.
+\end{enumerate}
+Consequently, among quadratic noise models, (U5) holds \emph{if and only if} free
+conservative motion never creates information.
+\end{proposition}
+\begin{proof}
+Work in the coordinates $z=W^{1/2}x$, where the noise is $\mathcal N(0,\sigma^2I)$ and the
+flow is $\tilde\Phi=W^{1/2}\Phi W^{-1/2}$. Note that
+$\tilde\Phi^\top\tilde\Phi=W^{-1/2}\Phi^\top W\Phi W^{-1/2}$.
+
+(i) If $\Phi^\top W\Phi=W$, then $\tilde\Phi$ is orthogonal. The observation
+$\tilde\Phi z(0)+n$ is an invertible transformation of $z(0)+\tilde\Phi^\top n$, and
+$\tilde\Phi^\top n\sim\mathcal N(0,\sigma^2I)$ has the same law as $n$. So the two
+observations carry the same information about $Y$ (\cref{lem:noise}a).
+
+(ii) With $W=\Em$, $\tilde\Phi(s)=e^{\At s}$ is a contraction, $\|C\|_2\le1$, by
+\cref{thm:ph}(b). Fix $t$ and $s\ge0$, and let $C=e^{\At s}$, so that
+$z(t+s)+n=Cz(t)+n$. Let $n_1\sim\mathcal N(0,\sigma^2I)$ and $n_2\sim\mathcal
+N(0,\sigma^2(I-CC^\top))$ be independent; the second covariance is valid because
+$\|C\|\le1$. Then $C(z(t)+n_1)+n_2$ has noise covariance
+$\sigma^2(CC^\top+I-CC^\top)=\sigma^2I$, so it has the same joint law with $Y$ as
+$Cz(t)+n$. It is obtained from the earlier observation $z(t)+n_1$ by further processing
+plus independent noise. By the data-processing inequality, $I_{t+s}\le I_t$.
+
+(iii) Let $R=\tilde\Phi^\top\tilde\Phi\neq I$; it is symmetric positive definite.
+Liouville's theorem gives $\det\Phi(t)=e^{t\,\tr A}=1$, because $\tr A=-\tr(H^{-1}D)=0$
+when $D=0$. Hence $\det R=\det(\Phi)^2=1$. A positive-definite matrix with determinant 1
+that is not the identity has an eigenvalue $\lambda_{\max}>1$ (eigenvalues whose product
+is 1 cannot all be $\le1$ unless all equal 1). Let $u$ be its eigenvector, and store
+$Y\sim\mathcal N(0,\sigma_Y^2)$ as $x(0)=W^{-1/2}u\,Y$. Then
+\[
+  I_0=\tfrac12\log\!\Big(1+\tfrac{\sigma_Y^2}{\sigma^2}|u|^2\Big)
+  <\tfrac12\log\!\Big(1+\tfrac{\sigma_Y^2}{\sigma^2}\lambda_{\max}|u|^2\Big)=I_t .
+\]
+\end{proof}
+
+\phys{Under the energy metric, a body's information about anything it has stored can change
+in only two ways: the force does work on it, which can add information, or the dampers
+dissipate it, which can only remove information. Conservative motion merely moves
+information around, as a rotation in whitened coordinates.
+
+Under any other quadratic noise model, a free oscillation that rotates the state into
+better-resolved directions creates bits from nothing. A measure of mechanical computation
+should credit the body for what the force delivered and debit it for what was dissipated,
+not for coordinate artifacts of free motion. This is the same accounting as in the
+thermodynamics of computation \citep{landauer1961irreversibility,bennett1982thermodynamics}:
+conservative dynamics are reversible and lose nothing, and dissipation is the irreversible
+step.}
+
+\begin{figure}[t]\centering
+\includegraphics[width=\linewidth]{figures/free_motion.pdf}
+\caption{Information about a signal stored in the SEA's state ($k_s=10^4$), under free
+motion, for four noise models. Each starts from the direction it resolves worst, scaled to
+2 bits. (a) Undamped: energy and action weighting stay at exactly 2 bits. Per-coordinate
+noise reaches 3.58 bits and the kinetic metric 3.22 bits, created by free motion alone.
+(b) With the leg's damping, energy can only decrease (\cref{prop:work}ii). Per-coordinate
+noise still rises to 3.08 bits first (\code{check\_free\_motion}).}
+\label{fig:freemotion}
+\end{figure}
+
+\begin{remark}[Classical versus quantum: why energy and not action]\label{rem:quantum}
+The quantum fluctuation--dissipation theorem \citep{callen1951irreversibility} gives each
+mode of frequency $\omega$ a fluctuation energy
+$\frac{\hbar\omega}2\coth\frac{\hbar\omega}{2k_BT}$. In whitened coordinates this is the
+noise variance per mode.
+\begin{itemize}[nosep]
+  \item When $k_BT\ll\hbar\omega$ it tends to $\frac12\hbar\omega$: noise energy grows
+        with frequency, which is action weighting (precision $\propto1/\omega$).
+  \item When $k_BT\gg\hbar\omega$ it tends to $k_BT$: equal energy per mode, the energy
+        metric.
+\end{itemize}
+For a 200\,Hz mode at room temperature, $\hbar\omega/k_BT\approx3\times10^{-11}$, so
+macroscopic mechanisms sit deep in the classical regime. Physics and the locality axiom
+agree: for robots, the currency of resolution is energy.
+
+Energy is also the additive conserved quantity associated with time-translation symmetry
+(Noether), which is why it can be assembled element by element.
+\end{remark}
+
+%=========================================================================================
+\section{The alternatives compared}
+\label{sec:alternatives}
+
+\Cref{tab:rules} lists the candidate noise models, the requirements each violates, and how
+it behaves in the two limits of Part~I. The frequency-weighted family is
+\[
+  W_p=\sum_i\omega_i^p\,(\text{modal energy form } i)
+  =\Em^{1/2}\diag\!\big((\Omega\Omega^\top)^{p/2},(\Omega^\top\Omega)^{p/2}\big)\Em^{1/2},
+\]
+with $\Omega=K^{1/2}H^{-1/2}$ as in \cref{thm:ph}. Here $p=0$ is the energy metric and
+$p=-1$ is action weighting. (For numerical comparison each $W_p$ is divided by
+$\omega_{\rm ref}^p$ so that it is measured in joules; this constant cancels in every
+design gap.)
+
+\begin{table}[t]\centering\small
+\caption{Candidate noise models. The stiff-limit column is SEA minus rigid bits at
+$k_s=10^{10}$ ($B_w=100$\,Hz). The mesh column is the change from $N=32$ to $N=64$
+elements on the rod of \cref{thm:mesh}.}
+\label{tab:rules}
+\begin{tabular}{>{\raggedright}p{0.25\linewidth}p{0.17\linewidth}>{\raggedright}p{0.17\linewidth}>{\raggedright\arraybackslash}p{0.27\linewidth}}
+\toprule
+Rule & Violates & Stiff limit (bits) & Mesh, $32\to64$ (bits)\\
+\midrule
+energy $W_0=\Em$ & --- & $0.0000$ & $+0.017$ (converges)\\
+action $W_{-1}$ & U2 & $0.0000$ & $+0.010$ (converges)\\
+$W_{+1}$ & U2 & $0.0007$, slowly & $+2.96$ (keeps growing)\\
+$W_{+2}$ & U2 & $1.489$ (no limit) & ---\\
+$W_{+3}$ & U2 & $60.1$ (diverges) & ---\\
+kinetic, $\diag(\omega_{\rm ref}^2H,H)$ & U3, U5 & $0.0000$ & $+0.018$ (converges)\\
+per-coordinate (\code{"state"}) & U1, U2, U3, U5 & $8.4716$ & $+33.3$ (keeps growing)\\
+data-driven whitening & not body-only & erases the body (\cref{prop:datadriven}) & ---\\
+Gramian/balanced coordinates & not body-only & --- & ---\\
+encoder on the motor (\code{"motor"}) & --- & a different question: the sensor & ---\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{The frequency-weighted family.} Every $W_p$ is coordinate-free (spread
+$<10^{-13}$ over the reparametrizations of \cref{fig:invariance}) and flow-invariant
+(\code{check\_flow\_invariance}). Each is non-local, however: it is a matrix function of
+$H^{-1}K$, so every element influences every entry.
+\begin{itemize}[nosep]
+  \item \emph{Locality, concretely.} Changing the \emph{ground} stiffness $k_i$ from
+        $10^5$ to $10^7$ changes the action metric's \emph{motor-velocity} entry by a factor
+        of 2.2. The energy metric's entry stays exactly at $I_{\rm rot}$
+        (\code{check\_locality}).
+  \item \emph{The stiff limit decides $p<2$.} By \cref{prop:sea} the fast mode's energy is
+        $O(k_s^{-1})$, while its frequency, and so its weight, grows like $k_s^{p/2}$. Its
+        weighted contribution therefore behaves like $k_s^{p/2-1}$, which vanishes if and
+        only if $p<2$. This is the argument of \cref{thm:limit} with a weighted norm; we
+        state it as a prediction rather than a theorem, because the slow-mode part is only
+        checked numerically. The numbers confirm it exactly
+        (\cref{fig:alternatives}a):
+        \begin{itemize}[nosep]
+          \item $p\le0$ converges;
+          \item $p=1$ converges at the predicted rate: the gap falls tenfold, from
+                $7.1\times10^{-3}$ to $7\times10^{-4}$, per factor 100 in $k_s$;
+          \item $p=2$ stalls at $1.49$ bits;
+          \item $p=3$ diverges.
+        \end{itemize}
+  \item \emph{The mesh decides $p\le0$.} On the rod, $p=-1$ and $p=0$ converge, and $p=+1$
+        keeps growing by about 3 bits per doubling (\cref{fig:alternatives}b).
+\end{itemize}
+So action weighting is the one serious competitor: it passes both limit tests. What
+excludes it is locality and, physically, the classical regime (\cref{rem:quantum}).
+
+\begin{figure}[t]\centering
+\includegraphics[width=\linewidth]{figures/alternatives.pdf}
+\caption{(a) Stiff limit of the frequency-weighted metrics $W_p$: SEA minus rigid bits
+against $k_s$. The gap vanishes for $p<2$, stalls at $p=2$ and diverges at $p=3$, as
+predicted. (b) Mesh refinement of the rod, relative to $N=64$. Energy, action and the
+kinetic metric converge; $p=+1$ does not (\code{check\_alternatives\_sea},
+\code{check\_alternatives\_rod}).}
+\label{fig:alternatives}
+\end{figure}
+
+\begin{proposition}[Data-driven whitening erases the body]\label{prop:datadriven}
+Suppose the stacked response $y=Mw$ ($M$ of full column rank $d$) is whitened by its own
+covariance, $(\sigma_w^2MM^\top)^{+1/2}$ on the range of $M$, and isotropic noise
+$\sigma_n$ is then added. Then the information is $\frac d2\log_2(1+\sigma_n^{-2})$ for
+\emph{every} body.
+\end{proposition}
+\begin{proof}
+Write the thin SVD $\sigma_wM=U\Sigma V^\top$. The whitener is $U\Sigma^{-1}U^\top$, and
+the whitened signal is $U\Sigma^{-1}U^\top U\Sigma V^\top(w/\sigma_w)=UV^\top(w/\sigma_w)$.
+Its Gram matrix is $\sigma_n^{-2}VU^\top UV^\top=\sigma_n^{-2}I_d$. By \cref{lem:gauss},
+the bits are $\frac12\log_2\det((1+\sigma_n^{-2})I_d)$.
+\end{proof}
+
+\phys{Whitening by the data, i.e.\ $z$-scoring or ZCA on the observed response, makes every
+direction equally informative by construction, so the body's contribution vanishes. The
+check gives 56.59 bits for the rigid leg and for SEAs at 70 and $10^4$, equal to the
+prediction (\code{check\_data\_driven\_whitening}). The noise model must come from the body,
+not from the data.}
+
+%=========================================================================================
+\section{A thermodynamically consistent body: Langevin noise}
+\label{sec:langevin}
+
+The paper's noise is added to the \emph{readout}, independently at each sample. A body
+that is genuinely noisy is instead driven by thermal forces matched to its own dampers,
+and its noise is then shaped by its dynamics. This section builds that model and asks
+whether the paper's conclusions survive.
+
+\paragraph{The model.} The equation of motion becomes
+\[
+  H\ddot q+D\dot q+Kq=J^\top f(t)+\xi(t),\qquad
+  \E[\xi(t)\xi(s)^\top]=2\sigma_T^2D\,\delta(t-s),
+\]
+started from the Gibbs law $x_q(0)\sim\mathcal N(0,\sigma_T^2\Em^{-1})$ on the clamped
+bench. By \cref{prop:fdt} the noise is stationary at covariance $P=\sigma_T^2\Em^{-1}$.
+Sampling with step $\Delta t$ gives $x_{k+1}=A_dx_k+B_df_k+w_k$ with $w_k$ i.i.d.\
+$\mathcal N(0,Q_d)$ and $Q_d=P-A_dPA_d^\top$; this is \code{gibbs\_pair}, scaled by
+$\sigma_T^2$. We set $\sigma_T^2=\sigma^2=10^{-4}$\,J, so a snapshot of the noise has
+exactly the covariance used in Part~I. Only its correlation over time differs.
+
+\begin{proposition}[Full observation: an exact formula]\label{prop:innov}
+If the full state is observed without readout noise, the information about the force
+profile is
+\[
+  \bits=\tfrac12\log_2\det\!\big(I_d+\sigma_w^2\,g\,\bar\Phi^\top\bar\Phi\big),
+  \qquad g=B_d^\top Q_d^{-1}B_d ,
+\]
+where $\bar\Phi$ holds the force basis at the samples that drive the state. The design
+enters only through the scalar $g$, the per-sample signal-to-noise ratio of a unit force
+against one thermal kick.
+\end{proposition}
+\begin{proof}
+\emph{Step 1: change variables.} The map from $(x_0,x_1,\dots,x_N)$ to
+$(x_0,e_0,\dots,e_{N-1})$, with $e_k=x_{k+1}-A_dx_k$, is invertible. So the two carry the
+same information (\cref{lem:noise}a).
+
+\emph{Step 2: what the new variables contain.} $x_0$ is independent of the force, and
+$e_k=B_df_k+w_k$, where the $w_k$ are i.i.d., independent of $x_0$, and Gaussian with
+covariance $Q_d$. This is a Gaussian channel with noise covariance $I\otimes Q_d$.
+
+\emph{Step 3: apply the Gaussian formula.} Whiten the noise by $Q_d^{-1/2}$ and apply
+\cref{lem:gauss} with $f_k=\sum_jw_j\bar\Phi_{kj}$. The Gram matrix is
+$\sigma_w^2\sum_k\bar\Phi_k^\top(B_d^\top Q_d^{-1}B_d)\bar\Phi_k$, where $\bar\Phi_k$ is
+row $k$ of $\bar\Phi$. Since $g$ is a scalar, this equals $\sigma_w^2g\,\bar\Phi^\top\bar\Phi$.
+\end{proof}
+
+\begin{proposition}[Only the dissipation at the contact matters]\label{prop:contact}
+Suppose $J^\top$ lies in the range of $D$. As $\Delta t\to0$,
+\[
+  g\;\to\;\frac{\Delta t}{2\sigma_T^2}\,J D^+J^\top .
+\]
+With the full state observed, the information therefore depends only on $JD^+J^\top$: the
+damping seen at the point where the force acts. For the paper's ground model, $JD^+J^\top=1/b_i$
+for the rigid transmission and for every SEA, so every design gives the same bits.
+\end{proposition}
+\begin{proof}[Proof sketch]
+\emph{Continuous time.} In the continuous-time limit, observing the state exactly is a
+white-Gaussian-noise channel for the drift $Bf$, with noise intensity
+$GG^\top=\diag(0,\,2\sigma_T^2H^{-1}DH^{-1})$. In the low-signal limit, where the causal
+estimate of the signal is negligible, Duncan's theorem \citep{duncan1970calculation} gives
+the information rate $\frac12\E[(Bf)^\top(GG^\top)^+(Bf)]$ nats per second.
+
+\emph{The rate.} Substituting $B=[0;H^{-1}J^\top]$ gives
+\[
+  \tfrac12\E[f^2]\,JH^{-1}\big(2\sigma_T^2H^{-1}DH^{-1}\big)^+H^{-1}J^\top
+  =\frac{\E[f^2]}{4\sigma_T^2}\,JD^+J^\top .
+\]
+
+\emph{Matching to the discrete channel.} Over one sample, the discrete channel carries
+$\frac12\log(1+g\,\E[f^2])\approx\frac12g\,\E[f^2]$ nats about a force sample. The
+continuous rate gives $\Delta t\,\E[f^2]\,JD^+J^\top/(4\sigma_T^2)$ over the same
+interval. Equating the two gives the stated limit for $g$, which does not depend on the
+signal amplitude.
+
+\emph{The design-independence.}
+\begin{itemize}[nosep]
+  \item For the rigid leg, $D=b_ir^2$ and $J=-r$, so $JD^+J^\top=1/b_i$.
+  \item For the SEA,
+        $D=\left[\begin{smallmatrix}b_s+b_ir^2&-b_s\\-b_s&b_s\end{smallmatrix}\right]$ has
+        $\det D=b_sb_ir^2$, so $(D^{-1})_{11}=b_s/(b_sb_ir^2)=1/(b_ir^2)$. With
+        $J=(-r,0)$, this gives $JD^{-1}J^\top=1/b_i$, independently of $k_s$ and $b_s$.
+\end{itemize}
+
+\emph{What is not proved here.} We do not prove that the discrete position-block terms
+leave the constant unchanged. The numbers below confirm it.
+\end{proof}
+
+\checked{
+\begin{itemize}[nosep]
+  \item $2\sigma_T^2 g/(\Delta t\,JD^+J^\top)$ is $1.0000$ at 4, 16 and 64\,kHz for the
+        rigid leg and for SEAs at $k_s=70$, $10^4$ and $10^6$ (shown as $g\sigma_T^2
+        f_s/JD^+J^\top=0.5000$ by \code{check\_langevin\_dt\_limit}). It deviates only for
+        coarse sampling (0.19 at 100\,Hz).
+  \item The exact formula of \cref{prop:innov} and a direct computation with the full
+        stacked noise covariance agree, 37.74216 bits
+        (\code{check\_langevin\_innovations}).
+  \item At the paper's settings, \emph{every} design gives 37.742 bits with the full state
+        observed.
+\end{itemize}}
+
+\phys{This is the thermal limit of force sensing. The force must be read against the
+fluctuating force of the damper at the contact, whose strength is set by the
+fluctuation--dissipation theorem (the mechanical analogue of Johnson--Nyquist noise \citep{nyquist1928thermal}). If the whole state is observed, the body's inertia and
+stiffness are irrelevant: no morphology can beat the contact-damper limit.
+
+The body's design matters only when the observation is \emph{partial}, which is always the
+case for a real robot.}
+
+\paragraph{Partial observation: what morphology does.} With noise injected through the
+dampers, observing coordinates $C$ with readout noise $\varepsilon$ gives the Gram matrix
+$\sigma_w^2M_C^\top(C\Sigma C^\top+\varepsilon^2I)^{-1}M_C$. Here $\Sigma$ is the stacked
+noise covariance, with blocks $\Cov(x_k,x_l)=A_d^{k-l}P$ for $k\ge l$
+(\code{langevin\_bits}). By data processing, observing a subset can never exceed the
+full-state value. So 37.742 bits is a hard ceiling for every design and every sensor.
+
+\begin{table}[t]\centering\small
+\caption{Bits about the force profile ($B_w=100$\,Hz) under the Langevin body, for several
+readouts, and under the readout-noise models of Part~I (\code{check\_langevin\_designs}).
+Efficiency is motor bits divided by full-state bits.}
+\label{tab:langevin}
+\begin{tabular}{lrrrrrr}
+\toprule
+& \multicolumn{4}{c}{Langevin body} & \multicolumn{2}{c}{readout noise only}\\
+\cmidrule(lr){2-5}\cmidrule(lr){6-7}
+Design & full state & motor & efficiency & motor + encoder & energy & motor\\
+\midrule
+rigid            & 37.742 & 37.695 & 0.999 & 35.707 & 71.723 & 66.836\\
+SEA $k_s=70$     & 37.742 &  2.266 & 0.060 &  1.637 & 69.280 & 24.379\\
+SEA $10^3$       & 37.742 & 18.628 & 0.494 & 17.925 & 70.267 & 65.892\\
+SEA $3\times10^3$& 37.742 & 29.038 & 0.769 & 28.194 & 71.084 & 72.780\\
+SEA $10^4$       & 37.742 & 35.067 & 0.929 & 33.820 & 71.773 & 69.414\\
+SEA $10^5$       & 37.742 & 37.242 & 0.987 & 35.631 & 71.742 & 67.104\\
+SEA $10^6$       & 37.742 & 37.537 & 0.995 & 35.704 & 71.725 & 66.863\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three findings (\cref{tab:langevin,fig:langevin}):
+\begin{enumerate}
+  \item \emph{The rigid transmission routes almost everything to its motor encoder.}
+        Through the motor angle alone it captures 99.9\% of the thermal ceiling. The SEA's
+        efficiency rises monotonically with stiffness: 6\% at the prototype's $k_s=70$,
+        49\% at $10^3$, 93\% at $10^4$, 99.5\% at $10^6$. This is Wensing's argument for
+        proprioceptive actuation, derived from first principles: the rigid transmission
+        delivers contact information to the actuator's own sensor without loss.
+  \item \emph{The readout-noise model can rank designs wrongly.} With fixed encoder noise
+        added to the readout, the SEA at $k_s=3\times10^3$ beats the rigid leg by 5.9 bits
+        through the motor encoder, and at $10^4$ by 2.6 bits. Under Langevin noise this cannot
+        happen: the rigid leg is already within 0.05 bits of the ceiling, so no design can
+        beat it by more.
+
+        The difference is resonance. A passive resonance amplifies the force signal at the
+        motor, and with readout-only noise that amplification looks like free SNR. Under
+        fluctuation--dissipation the same resonance amplifies the thermal force noise by
+        exactly the same factor, so it gains nothing. This is the duplicate-readout
+        artifact again, now in the frequency domain.
+  \item \emph{With full-state readout, the two models agree qualitatively.} Langevin noise
+        plus energy readout noise gives 36.2--36.4 bits for every design. The
+        energy-whitened readout model of Part~I gives 69.3--71.8. Both say the full state
+        hardly separates the designs, whereas the motor encoder separates them strongly.
+\end{enumerate}
+
+\begin{figure}[t]\centering
+\includegraphics[width=\linewidth]{figures/langevin.pdf}
+\caption{(a) SEA minus rigid bits through different noise models. Langevin noise with the
+full state observed gives zero, to within $10^{-5}$ bits, for every design. Through the motor encoder,
+Langevin noise gives a monotone climb to the rigid leg, while readout-only noise lets the
+SEA overtake the rigid leg near $3\times10^3$. (b) Routing efficiency under Langevin noise:
+the fraction of the thermal ceiling that reaches the motor encoder.}
+\label{fig:langevin}
+\end{figure}
+
+\paragraph{Caveats.}
+\begin{itemize}[nosep]
+  \item $\sigma_T^2$ is an effective temperature, chosen to match Part~I.
+  \item The ground damping $b_i$ is a modeling choice ($\zeta_{\rm contact}=0.15$),
+        identical across designs by construction
+        (\code{test\_one\_ground\_for\_every\_design}). The common ceiling is therefore a
+        property of the ground model.
+  \item Damping is modeled as constant and viscous. The model needs a positive-definite
+        $\Em$, so it applies to the clamped bench only.
+\end{itemize}
+
+%=========================================================================================
+\section{What energy whitening does and does not capture}
+\label{sec:capture}
+
+\begin{enumerate}
+  \item \emph{Retention is settled.} For the question ``how much does the body itself hold
+        about the world,'' energy is the unique admissible resolution
+        (\cref{thm:unique}). Every information quantity built on it is coordinate-free,
+        composes across components, converges in constraint and refinement limits, and
+        changes only through work and dissipation (\cref{prop:work}).
+  \item \emph{Routing is what morphology does.} In a thermodynamically consistent body the
+        total is capped by the dissipation at the contact (\cref{prop:contact}). What
+        distinguishes designs is how much of that total reaches the coordinates a
+        controller can read, at a latency it can use. The efficiency of
+        \cref{tab:langevin} is a candidate scalar measure of mechanical intelligence in
+        this sense. The temporal and frequency decompositions of Part~I can be applied to
+        it unchanged.
+  \item \emph{Relevance is not captured.} Neither retention nor routing asks whether the
+        information is about what the task needs. The paper's $I(W;X\mid A)$ measures
+        relevance to the action. Task-specific variables, such as the force component that
+        matters for balance, would sharpen this.
+  \item \emph{Nonlinear and multistable bodies.} The framework extends directly: the noise
+        law becomes the Gibbs law $\exp(-V/T)$ on a non-quadratic potential. A mechanical
+        memory then stores a reliable bit when its energy barrier is large compared with
+        the noise energy, the classical criterion behind Landauer's bound
+        \citep{landauer1961irreversibility}. This connects the analysis to mechanical
+        metamaterials and latching mechanisms, but none of it is tested here.
+  \item \emph{Validation must be predictive.} A definition is checked by its consequences.
+        The consistency checks pass: invariance, limits, Wensing's conclusions. The
+        empirical test is whether retention, routing or relevance best predicts
+        closed-loop performance across designs. The paper's Table~I hints at this.
+\end{enumerate}
+
+%=========================================================================================
 \section{Limitations and open questions}
 \label{sec:limits}
 \begin{enumerate}
   \item \emph{Body versus sensor.} The energy noise model quantifies what the
         \emph{body} retains. Real encoders have per-coordinate noise, and the code's
         \code{"motor"} readout answers that different question. The two should be
-        reported as distinct quantities.
+        reported as distinct quantities; \cref{sec:langevin} shows how to combine them
+        consistently.
   \item \emph{The environment lives in the metric.} $K$ includes the ground spring, so
         $\Em$ differs between stance and flight, and the ground stiffness can flip the
         sign of the SEA--rigid comparison
@@ -1290,6 +1962,52 @@ which is why \code{morphological\_bits} correctly refuses the free bench.}
   \item \emph{Two metrics, two questions.} $I(W;X)$ and $\mathrm{MC}_W$ measure
         transmission and retention respectively (\cref{prop:mcw}). They should not be
         expected to agree.
+\end{enumerate}
+
+%=========================================================================================
+\section{How to proceed: decisions for discussion}
+\label{sec:proceed}
+
+Each item states a decision, the options, and a recommendation with its reason.
+
+\begin{enumerate}
+  \item \emph{How to justify the metric in the paper.} Options:
+        \begin{itemize}[nosep]
+          \item keep ``resembles approaches in [21]--[25]'';
+          \item replace it with the uniqueness theorem (\cref{thm:unique}) and the
+                information-preservation property (\cref{prop:work}), citing Jaynes for
+                the shape.
+        \end{itemize}
+        \emph{Recommendation:} the second. It is a stronger, self-contained claim, and it
+        removes reliance on citations that we could verify only through secondary
+        sources.
+  \item \emph{What to report.} Options: retained bits only (as now), or retained and
+        routed bits side by side (body vs motor encoder).
+        \emph{Recommendation:} side by side. The gap between them is where morphology does
+        its work, and it is what reproduces Wensing's argument.
+  \item \emph{Which noise model.} Options: keep readout noise and add the Langevin body as
+        a robustness check, or make the Langevin body the main model.
+        \emph{Recommendation:} keep readout noise for the full-state analyses of
+        Sections~III--IV, where the two agree qualitatively. Use the Langevin body for
+        anything that involves a sensor, since readout-only noise misranks resonant
+        designs there (\cref{tab:langevin}).
+  \item \emph{Predictive validation.} For the Go2 designs of Table~I, compute retention,
+        routing efficiency and $I(W;X\mid A)$, and test which best predicts tracking
+        error across designs and seeds. This is the empirical test the definitions
+        currently lack.
+  \item \emph{The simulated leg.} Repeat the Langevin comparison in MuJoCo by injecting
+        damping-matched noise forces, and estimate with InfoNCE as in Sec.~IV. The
+        prediction is that the full-state bits are flat across designs and the motor bits
+        climb with stiffness.
+  \item \emph{Floating base.} Decide how Sec.~V treats zero-energy base positions:
+        velocities only, the $\omega_{\rm ref}^2H$ regularizer with a sensitivity sweep,
+        or gravity and contact stiffness at the operating point (\cref{sec:floating}).
+        The Langevin body also needs $\Em\succ0$ for its initial law, so this decision
+        affects both models.
+  \item \emph{Nonlinear and multistable extension.} Replace the quadratic energy by the
+        actual potential, with noise law $\exp(-V/T)$. This is the natural route to
+        mechanical memory and logic, and a possible follow-up paper rather than a
+        revision item.
 \end{enumerate}
 
 %=========================================================================================
@@ -1314,6 +2032,12 @@ budget counts redundant coordinates as independent observations (8.47 bits here)
 coordinates the dynamics take port-Hamiltonian form \citep{vanderschaft2014port}, and the
 velocity block is the mass weighting of modal kinetic-energy sensor-placement methods
 \citep{li2007connection}.
+
+The energy metric is moreover the only noise metric that is coordinate-free, assembled
+element by element without outside scales, symmetric in time, and invariant under the
+body's free motion. The last property means that free motion can never create
+information: under this metric the body gains information only through work done by the
+environment and loses it only through dissipation.
 \end{quote}
 
 \paragraph{For the Shapley paragraph (Eq.~(10)).}
@@ -1365,6 +2089,10 @@ Source & Access & What is used \\
 \citet{kammer1991sensor}, \citet{papadimitriou2004optimal} & secondary & EfI as D-optimal design; entropy-based placement\\
 \citet{willems1972dissipative}, \citet{stuart2010inverse} & secondary & storage functions; function-space viewpoint\\
 \citet{dupont1973l2,baker1976error,geveci1984convergence} & secondary & semi-discrete FE convergence (an assumption of \cref{thm:mesh})\\
+\citet{landauer1961irreversibility}, \citet{bennett1982thermodynamics} & secondary & reversibility of conservative dynamics; dissipation as erasure\\
+\citet{callen1951irreversibility} & secondary & quantum FDT, $\frac{\hbar\omega}{2}\coth\frac{\hbar\omega}{2k_BT}$\\
+\citet{nyquist1928thermal} & secondary & thermal noise set by dissipation\\
+\citet{duncan1970calculation} & secondary & mutual information for signals in white Gaussian noise\\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -1373,7 +2101,7 @@ Source & Access & What is used \\
 \label{app:repro}
 \begin{itemize}[nosep]
 \item \code{uv run python docs/whitening/checks.py} prints every quantity quoted here.
-\item \code{uv run python docs/whitening/make\_figures.py} redraws \cref{fig:invariance,fig:stiff,fig:snr,fig:shapley,fig:rod}.
+\item \code{uv run python docs/whitening/make\_figures.py} redraws every figure.
 \item \code{uv run pytest tests/test\_energy\_whitening.py} asserts each theorem's numerical
   consequence. It runs in a few seconds, and no library code or golden table is changed.
 \end{itemize}

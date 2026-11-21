@@ -146,3 +146,103 @@ def test_floating_base_loses_nothing_when_force_and_ground_share_J():
     assert abs(r["J_phi0"]) < 1e-12
     assert r["foot_energy"] == pytest.approx(r["foot_kinetic"], abs=1e-9)
     assert r["trunk_kinetic"] - r["trunk_energy"] > 10.0
+
+
+# ---------------------------------------------------------------------------------------
+# Part II: is energy the right choice?
+# ---------------------------------------------------------------------------------------
+
+def test_uniqueness_step_four_identity():
+    """Theorem (uniqueness), step 4: d/dt(a q'Kq + b qd'Hqd) = 2(a-b) qd'Kq."""
+    assert checks.check_uniqueness_flow()["max_rel_err"] < 1e-10
+
+
+def test_only_energy_and_modal_weightings_are_flow_invariant():
+    """(U5): energy and W_p are preserved by free motion; per-coordinate and kinetic are not."""
+    r = checks.check_flow_invariance()
+    for name in ("energy", "action (p=-1)", "p=+1"):
+        assert r[name] < 1e-10
+    assert r["per-coordinate"] > 1.0 and r["kinetic"] > 0.5
+    assert r["det_Phi"] == pytest.approx(1.0, abs=1e-10)        # Liouville
+
+
+def test_modal_weightings_are_not_local():
+    """(U2): the ground stiffness moves the action metric's motor-velocity entry."""
+    r = checks.check_locality()
+    e = [v["energy"] for v in r.values()]
+    a = [v["action"] for v in r.values()]
+    assert max(e) - min(e) < 1e-12
+    assert max(a) / min(a) > 2.0
+
+
+def test_free_motion_creates_information_only_without_energy_noise():
+    """Proposition (information is created only by work), all three parts."""
+    r = checks.check_free_motion()
+    und, damp = r["undamped"], r["damped"]
+    for name in ("energy", "action"):
+        assert np.ptp(und[name]) < 1e-9                                    # (i)
+    assert np.all(np.diff(damp["energy"]) <= 1e-12)                        # (ii)
+    assert und["per-coordinate"].max() > 3.0                               # (iii)
+    assert und["kinetic"].max() > 3.0
+    assert damp["per-coordinate"].max() > 2.5                              # even damped
+
+
+def test_frequency_weighted_stiff_limit_threshold_is_p_equals_two():
+    """The weighted fast-mode contribution scales like k_s^(p/2 - 1)."""
+    r = checks.check_alternatives_sea()
+    g = r["gaps"]
+    for p in ("p=-2", "p=-1", "p=0"):
+        assert abs(g[p][-1]) < 1e-5
+    assert g["p=1"][-2] / g["p=1"][-1] == pytest.approx(10.0, rel=0.05)    # k_s^-1/2
+    assert g["p=2"][-1] == pytest.approx(g["p=2"][-2], abs=0.01) and g["p=2"][-1] > 1.0
+    assert g["p=3"][-1] > 50.0
+    assert g["per-coordinate"][-1] == pytest.approx(8.4716, abs=1e-3)
+    for name, spread in r["spread"].items():
+        if name != "per-coordinate":
+            assert spread < 1e-9
+    assert r["spread"]["per-coordinate"] > 100.0
+
+
+def test_frequency_weighted_mesh_behaviour():
+    """Rod: p <= 0 and kinetic converge; p = +1 keeps growing."""
+    b = checks.check_alternatives_rod()["bits"]
+    for name in ("p=-1", "p=0", "kinetic"):
+        assert abs(b[name][-1] - b[name][-2]) < 0.05
+    assert b["p=1"][-1] - b["p=1"][-2] > 2.0
+
+
+def test_data_driven_whitening_erases_the_body():
+    """Proposition (data-driven whitening erases the body)."""
+    r = checks.check_data_driven_whitening()
+    for name in ("rigid", "SEA 70", "SEA 1e4"):
+        assert r[name] == pytest.approx(r["predicted"], abs=1e-8)
+
+
+def test_langevin_innovations_formula_matches_the_stacked_covariance():
+    """Proposition (full observation: an exact formula)."""
+    for v in checks.check_langevin_innovations().values():
+        assert v["innovations"] == pytest.approx(v["stacked"], abs=1e-8)
+
+
+def test_langevin_full_state_information_depends_only_on_contact_damping():
+    """Proposition (only the dissipation at the contact matters)."""
+    r = checks.check_langevin_dt_limit(fs_list=(4e3, 16e3, 64e3))
+    JDJ = [v["JDJ"] for v in r["rows"].values()]
+    assert max(JDJ) - min(JDJ) < 1e-12                                      # = 1/b_i
+    for v in r["rows"].values():
+        np.testing.assert_allclose(v["ratio"], 0.5, atol=1e-4)
+
+
+def test_langevin_routing_reproduces_the_proprioceptive_argument():
+    """Langevin body: equal ceiling, rigid at the ceiling, SEA climbing with stiffness."""
+    r = checks.check_langevin_designs(ks_list=(70.0, 1e3, 1e4, 1e6))
+    rows = r["rows"]
+    full = [v["full"] for v in rows.values()]
+    assert max(full) - min(full) < 1e-4
+    assert rows["rigid"]["motor"] / rows["rigid"]["full"] > 0.998
+    motor = [rows[k]["motor"] for k in r["ks"]]
+    assert all(np.diff(motor) > 0)
+    for k in r["ks"]:
+        assert rows[k]["motor"] <= rows["rigid"]["full"] + 1e-9                 # the ceiling
+    # the readout-only model lets a resonant SEA beat the rigid leg through the motor
+    assert rows[1e4]["readout_motor"] > rows["rigid"]["readout_motor"]
